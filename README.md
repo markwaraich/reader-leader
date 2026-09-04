@@ -50,4 +50,4 @@ Live VAD utterance edges advance the active token. A two-second pause highlights
 
 ## Deployment
 
-Reader Leader requires a server runtime because it includes Next.js App Router handlers such as `POST /api/speech/align`. The project is configured with server capability rather than static S3-only hosting. `pnpm build` enables Next.js standalone output and packages the runnable server, traced dependencies, and `/_next/static` assets into `dist/`; production starts through `node dist/index.js` on the configured host and port.
+Reader Leader requires a server runtime because it includes Next.js App Router handlers such as `POST /api/speech/align`. The project is configured with server capability rather than static S3-only hosting. `pnpm build` enables Next.js standalone output and packages the runnable server, traced dependencies, and `/_next/static` assets into `dist/`; production starts through `node dist/index.js` on the configured host and port. The packager also mirrors `/_next/static` into `dist/public/_next/static`, satisfying the deployment image’s CDN upload contract while retaining the server-local copy.

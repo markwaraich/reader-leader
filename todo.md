@@ -79,3 +79,11 @@
 - [x] Apply the smallest deployment-compatible hosting or build correction without removing `/api/speech/align`.
 - [x] Run `pnpm test`, a deployment-compatible production build, and local HTTP verification.
 - [x] Save a deployment-ready checkpoint for publishing from the Management UI.
+
+## Deployment CDN Artifact Repair
+
+- [x] Create a non-empty `dist/public` tree required by the server-capable deployment image’s CDN upload step.
+- [x] Mirror Next.js `/_next/static` files into `dist/public/_next/static` while retaining them inside the standalone runtime.
+- [x] Verify the exact `dist/public/*` glob used by Cloud Build has matches.
+- [x] Run tests, strict checks, a clean build, and the packaged runtime HTTP/API checks.
+- [x] Save a corrected deployment checkpoint for publishing.
