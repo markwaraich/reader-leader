@@ -47,3 +47,7 @@ The `knight` evidence clip is decoded from the complete session recording using 
 ## Phase 4 Pitch Demonstration
 
 Live VAD utterance edges advance the active token. A two-second pause highlights that token in amber, and a 3.8-second pause reveals its phonetic scaffold without score impact. The regional mode accepts rhotic `horse` as `accepted-regional-variant`, stays silent, and reports a 0.0% false-correction rate. Standard RP comparison mode deliberately simulates a baseline substitution and amber interruption, yielding a measurable false-correction rate for the same reading.
+
+## Deployment
+
+Reader Leader requires a server runtime because it includes Next.js App Router handlers such as `POST /api/speech/align`. The project is configured with server capability rather than static S3-only hosting. `pnpm build` enables Next.js standalone output and packages the runnable server, traced dependencies, and `/_next/static` assets into `dist/`; production starts through `node dist/index.js` on the configured host and port.

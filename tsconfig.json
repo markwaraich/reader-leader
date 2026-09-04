@@ -43,7 +43,11 @@
     "node_modules",
     "client",
     "server",
+    "drizzle",
+    "shared",
     "dist",
-    "vite.config.ts"
+    "vite.config.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts"
   ]
 }

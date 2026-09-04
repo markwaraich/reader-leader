@@ -71,3 +71,11 @@
 - [x] Preserve the Baseline RP 800 ms anomaly reveal and keep it visible before celebration.
 - [x] Update focused and browser regressions for the decoupled final-token paths.
 - [x] Run `pnpm test`, strict checks, a clean production build, HTTP 200, and restart `0.0.0.0:3000`.
+
+## Deployment Artifact Repair
+
+- [x] Confirm whether the current project is still configured as static hosting while the app requires a Next.js server runtime.
+- [x] Identify why the deployment pipeline expects `/dist` while `pnpm build` emits `.next`.
+- [x] Apply the smallest deployment-compatible hosting or build correction without removing `/api/speech/align`.
+- [x] Run `pnpm test`, a deployment-compatible production build, and local HTTP verification.
+- [x] Save a deployment-ready checkpoint for publishing from the Management UI.

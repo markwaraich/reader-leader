@@ -4,6 +4,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  output: "standalone",
 };
 
 export default nextConfig;

@@ -10,8 +10,12 @@ export default defineConfig([
     ".next-browser/**",
     "client/**",
     "server/**",
+    "drizzle/**",
+    "shared/**",
     "dist/**",
     "vite.config.ts",
+    "drizzle.config.ts",
+    "vitest.config.ts",
     "tsconfig.node.json",
   ]),
 ]);
