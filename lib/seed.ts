@@ -3,29 +3,19 @@ import type { AlignmentResponse, ReaderLeaderState, Story, StudentMetric, TokenA
 /** Deterministic foundation data keeps the single-path demo coherent before persistence and production speech services are introduced. */
 
 export const STORY_ASSETS = {
-  fatCat: "/manus-storage/fat-cat_ce8098e7.png",
-  bigDog: "/manus-storage/big-dog_dc29b668.png",
-  sunBun: "/manus-storage/sun-bun_7fe0521a.png",
-  pigInMud: "/manus-storage/pig-in-mud_3faca832.png",
-  redHen: "/manus-storage/red-hen_1648ab0a.png",
-  frogLog: "/manus-storage/frog-log_0e4e4cf9.png",
-  bearsHat: "/manus-storage/bears-hat_4e787381.png",
-  shipTrip: "/manus-storage/ship-trip_18539606.png",
-  foxBox: "/manus-storage/fox-box_434d9340.png",
-  celebrationStar: "/manus-storage/celebration-star_375de249.png",
   brandMark: "/icon.svg",
 } as const;
 
 export const STORIES: Story[] = [
-  { id: "fat-cat", title: "The Fat Cat", level: 1, band: "pink", bandLabel: "Level 1: Pink Band", focus: "CVC Words", targetText: "The big cat sat on the mat.", imageUrl: STORY_ASSETS.fatCat },
-  { id: "big-dog", title: "Big Dog", level: 1, band: "pink", bandLabel: "Level 1: Pink Band", focus: "CVC Words", targetText: "The big dog can run and hop.", imageUrl: STORY_ASSETS.bigDog },
-  { id: "sun-bun", title: "Sun Bun", level: 1, band: "pink", bandLabel: "Level 1: Pink Band", focus: "CVC Words", targetText: "The bun sat in the sun.", imageUrl: STORY_ASSETS.sunBun },
-  { id: "pig-in-mud", title: "Pig in Mud", level: 2, band: "red", bandLabel: "Level 2: Red Band", focus: "Short Vowels", targetText: "The pink pig dug in the mud.", imageUrl: STORY_ASSETS.pigInMud },
-  { id: "red-hen", title: "Red Hen", level: 2, band: "red", bandLabel: "Level 2: Red Band", focus: "Short Vowels", targetText: "The red hen had six chicks.", imageUrl: STORY_ASSETS.redHen },
-  { id: "frog-log", title: "Frog Log", level: 2, band: "red", bandLabel: "Level 2: Red Band", focus: "Short Vowels", targetText: "A green frog sat on a log.", imageUrl: STORY_ASSETS.frogLog },
-  { id: "bears-hat", title: "Bear's Hat", level: 3, band: "yellow", bandLabel: "Level 3: Yellow Band", focus: "Consonant Blends", targetText: "The brown bear found a bright hat.", imageUrl: STORY_ASSETS.bearsHat },
-  { id: "ship-trip", title: "Ship Trip", level: 3, band: "yellow", bandLabel: "Level 3: Yellow Band", focus: "Consonant Blends", targetText: "The ship went on a long trip.", imageUrl: STORY_ASSETS.shipTrip },
-  { id: "fox-box", title: "Fox Box", level: 3, band: "yellow", bandLabel: "Level 3: Yellow Band", focus: "Consonant Blends", targetText: "The quick fox hid in a box.", imageUrl: STORY_ASSETS.foxBox },
+  { id: "fat-cat", title: "The Fat Cat", level: 1, band: "pink", bandLabel: "Level 1: Pink Band", focus: "CVC Words", targetText: "The big cat sat on the mat." },
+  { id: "big-dog", title: "Big Dog", level: 1, band: "pink", bandLabel: "Level 1: Pink Band", focus: "CVC Words", targetText: "The big dog can run and hop." },
+  { id: "sun-bun", title: "Sun Bun", level: 1, band: "pink", bandLabel: "Level 1: Pink Band", focus: "CVC Words", targetText: "The bun sat in the sun." },
+  { id: "pig-in-mud", title: "Pig in Mud", level: 2, band: "red", bandLabel: "Level 2: Red Band", focus: "Short Vowels", targetText: "The pink pig dug in the mud." },
+  { id: "red-hen", title: "Red Hen", level: 2, band: "red", bandLabel: "Level 2: Red Band", focus: "Short Vowels", targetText: "The red hen had six chicks." },
+  { id: "frog-log", title: "Frog Log", level: 2, band: "red", bandLabel: "Level 2: Red Band", focus: "Short Vowels", targetText: "A green frog sat on a log." },
+  { id: "bears-hat", title: "Bear's Hat", level: 3, band: "yellow", bandLabel: "Level 3: Yellow Band", focus: "Consonant Blends", targetText: "The brown bear found a bright hat." },
+  { id: "ship-trip", title: "Ship Trip", level: 3, band: "yellow", bandLabel: "Level 3: Yellow Band", focus: "Consonant Blends", targetText: "The ship went on a long trip." },
+  { id: "fox-box", title: "Fox Box", level: 3, band: "yellow", bandLabel: "Level 3: Yellow Band", focus: "Consonant Blends", targetText: "The quick fox hid in a box." },
   { id: "brave-knight", title: "The Brave Knight", level: 5, band: "green", bandLabel: "Level 5: Green Band", focus: "Trigraphs & Silent Letters", targetText: "The brave knight went out into the cold night to find his lost horse." },
   { id: "lost-shield", title: "The Lost Shield", level: 5, band: "green", bandLabel: "Level 5: Green Band", focus: "Trigraphs & Silent Letters", targetText: "The knight searched the castle for his lost shield." },
   { id: "kings-ring", title: "King's Ring", level: 5, band: "green", bandLabel: "Level 5: Green Band", focus: "Trigraphs & Silent Letters", targetText: "The king lost his bright ring in the long grass." },
@@ -86,7 +76,6 @@ export const DEFAULT_STATE: ReaderLeaderState = {
       bandLabel: "Level 1: Pink Band",
       focus: "CVC Words",
       targetText: "The big cat sat on the mat.",
-      imageUrl: STORY_ASSETS.fatCat,
     },
     localeProfile: "en-IE",
     evaluationMode: "regional-restraint",
@@ -111,6 +100,5 @@ export function getStorySnapshot(story: Story) {
     bandLabel: story.bandLabel,
     focus: story.focus,
     targetText: story.targetText,
-    imageUrl: story.imageUrl,
   };
 }

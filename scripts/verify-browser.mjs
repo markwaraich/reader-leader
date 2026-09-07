@@ -133,6 +133,7 @@ try {
   await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");
   assert.equal(await client.evaluate(`(() => { const section = [...document.querySelectorAll('section')].find((candidate) => candidate.querySelector('h2')?.textContent?.includes('Level 5: Green Band')); return section?.querySelectorAll('button').length; })()`), 3);
   assert.equal(await client.evaluate(`['The Brave Knight', 'The Lost Shield', "King's Ring"].every((title) => [...document.querySelectorAll('button')].some((button) => button.textContent?.includes(title)))`), true);
+  assert.equal(await client.evaluate(`(() => { const storyButtons = [...document.querySelectorAll('button')].filter((button) => button.textContent?.includes('Focus:')); return storyButtons.length === 12 && storyButtons.every((button) => button.querySelector('svg')); })()`), true, "Every story card must retain its inline illustration without a storage dependency.");
 
   await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('The Lost Shield'))?.click()`);
   await waitForValue(client.evaluate, "location.pathname === '/read'");
@@ -143,6 +144,7 @@ try {
   await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 2");
   await client.command("Page.navigate", { url: `${APP_URL}/celebrate` });
   await waitForValue(client.evaluate, "document.body.textContent.includes('Read Again')");
+  assert.equal(await client.evaluate(`document.querySelector('svg[aria-label="A smiling gold celebration star"]') !== null`), true, "The celebration star must render without an external image request.");
   await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('Read Again'))?.click()`);
   await waitForValue(client.evaluate, "location.pathname === '/read'");
   await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 0");

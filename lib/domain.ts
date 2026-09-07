@@ -14,10 +14,9 @@ export interface Story {
   bandLabel: string;
   focus: string;
   targetText: string;
-  imageUrl?: string;
 }
 
-export type StorySnapshot = Pick<Story, "id" | "title" | "level" | "band" | "bandLabel" | "focus" | "targetText" | "imageUrl">;
+export type StorySnapshot = Pick<Story, "id" | "title" | "level" | "band" | "bandLabel" | "focus" | "targetText">;
 
 export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "review" | "substitution" | "omission" | "hesitation";
 

@@ -1,9 +1,8 @@
 /* Reference-led rule: celebration centres the smiling gold star, oversized teal praise, and three simple achievement badges on warm cream. */
-import Image from "next/image";
 import Link from "next/link";
 import { Ear, Languages, Zap } from "lucide-react";
 import { StudentTopBar } from "@/components/student-top-bar";
-import { STORY_ASSETS } from "@/lib/seed";
+import { CelebrationStar } from "@/components/celebration-star";
 import { SessionOutcomePill } from "@/components/session-outcome-pill";
 
 export const metadata = { title: "Brilliant Reading" };
@@ -14,7 +13,7 @@ export default function CelebratePage() {
     <main className="student-canvas pb-10">
       <StudentTopBar filledStars={5} />
       <section className="mx-auto flex max-w-[760px] flex-col items-center px-8 pt-14 text-center sm:px-12">
-        <Image alt="A smiling gold celebration star" className="size-72 object-contain sm:size-80" height={320} priority src={STORY_ASSETS.celebrationStar} unoptimized width={320} />
+        <CelebrationStar />
         <h1 className="mt-4 text-[4.2rem] leading-[1.08] font-black tracking-[-0.05em] text-[var(--reader-teal-deep)] sm:text-[5rem]">Brilliant<br />Reading!</h1>
         <SessionOutcomePill />
         <div className="mt-14 grid w-full grid-cols-3 gap-3">

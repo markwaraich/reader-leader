@@ -1,11 +1,10 @@
 "use client";
 
 /* Reference-led rule: the library follows the supplied portrait rails, bold band labels, soft white story cards, and large rounded child-readable type. */
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { BookOpen, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useReaderSession } from "@/app/providers";
-import { GreenBandIllustration } from "@/components/green-band-illustration";
+import { StoryIllustration } from "@/components/story-illustration";
 import { STORIES } from "@/lib/seed";
 import type { BookBandId, Story } from "@/lib/domain";
 
@@ -28,13 +27,7 @@ function StoryCard({ story, focusColour }: { story: Story; focusColour: string }
   return (
     <button className="student-card pressable flex w-[218px] shrink-0 flex-col items-center overflow-hidden px-4 pb-4 pt-5 text-center sm:w-[236px]" onClick={openStory} type="button">
       <span className="grid h-40 w-full place-items-center" aria-hidden="true">
-        {story.band === "green" ? (
-          <GreenBandIllustration storyId={story.id as "brave-knight" | "lost-shield" | "kings-ring"} />
-        ) : story.imageUrl ? (
-          <Image alt="" className="h-40 w-full object-contain" height={160} src={story.imageUrl} unoptimized width={180} />
-        ) : (
-          <span className="grid size-28 place-items-center rounded-full bg-[var(--reader-cream)] text-[var(--reader-gold)]"><BookOpen className="size-16" strokeWidth={1.8} /></span>
-        )}
+        <StoryIllustration storyId={story.id} />
       </span>
       <span className="mt-2 text-[1.72rem] leading-tight font-black text-black">{story.title}</span>
       <span className="mt-3 rounded-full px-3 py-1.5 text-[0.95rem] leading-none font-extrabold text-white" style={{ backgroundColor: focusColour, color: story.band === "pink" ? "#062333" : "white" }}>
