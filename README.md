@@ -26,11 +26,17 @@ The story library includes a complete three-card Level 5 Green Band: The Brave K
 | `/celebrate` | Student celebration and educator-record handoff |
 | `/dashboard` | Class metrics and phonetic-gap overview |
 | `/dashboard/student` | Latest/seeded running record with two-click teacher override and audit state |
-| `POST /api/speech/align` | Typed deterministic alignment mock |
+| `POST /api/speech/align` | Typed Gemini audio diagnostic with deterministic fallback |
 
 ## Run Locally
 
-Install dependencies with `pnpm install`, create the compiled bundle with `NODE_ENV=production pnpm build`, then run the production preview with `pnpm dev` or `pnpm start` and open `http://localhost:3000`. The managed preview intentionally maps `pnpm dev` to `next start`, avoiding development HMR WebSockets across container proxies. Run `pnpm check` for lint and strict TypeScript validation, `pnpm verify:core` for threshold/metrics assertions, and `pnpm verify:browser` for the self-contained Chromium flow with fake silent audio.
+Install dependencies with `pnpm install`, create the compiled bundle with `pnpm build`, then run the production preview with `pnpm dev` or `pnpm start` and open `http://localhost:3000`. The managed preview intentionally maps `pnpm dev` to `next start`, avoiding development HMR WebSockets across container proxies. Run `pnpm check` for lint and strict TypeScript validation, `pnpm test` for unit, FSM, and Chromium regressions, and `pnpm verify:gemini-live` for an opt-in live-provider endpoint smoke check.
+
+## Gemini Audio Diagnostics
+
+The existing two-second WAV evidence clip is serialized at the alignment client boundary and sent once, after the read finishes. The server-only Google Gen AI adapter validates structured JSON, enforces Reader Leader’s rhotic `horse` and silent-`k` policies, and maps the result into the existing Running Record token fields. The provider model is selected with `GEMINI_MODEL`; source defaults to `gemini-2.5-flash`, while the current runtime uses a provider-available model override. Missing credentials, quota errors, unavailable models, malformed output, and network failures return the complete deterministic Running Record with HTTP 200.
+
+`GEMINI_API_KEY` and `GEMINI_MODEL` must be configured as managed server secrets for production. `.env.local` is ignored and is only for local development. Never place either value in browser-prefixed variables.
 
 ## Phonics Restraint Contract
 

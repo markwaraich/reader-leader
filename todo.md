@@ -87,3 +87,13 @@
 - [x] Verify the exact `dist/public/*` glob used by Cloud Build has matches.
 - [x] Run tests, strict checks, a clean build, and the packaged runtime HTTP/API checks.
 - [x] Save a corrected deployment checkpoint for publishing.
+
+## Live Gemini Audio Alignment
+
+- [x] Configure ignored local Gemini credentials and a configurable `gemini-2.5-flash` default without exposing secrets.
+- [x] Install `@google/genai` and add a server-only structured audio-diagnostic adapter.
+- [x] Reuse the existing two-second WAV snippet at the current alignment boundary without altering its capture mechanism.
+- [x] Map validated Gemini diagnostics into the existing Running Record token contract.
+- [x] Preserve deterministic HTTP-200 fallbacks for missing credentials and every provider failure.
+- [x] Verify strict types, tests, live/fallback API behavior, standalone packaging, and production HTTP 200 on port 3000.
+- [x] Save a verified Gemini integration checkpoint.

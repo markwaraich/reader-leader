@@ -1,8 +1,15 @@
-/* Reference-led rule: the mock alignment boundary protects accent and phonics restraint before educator evidence is rendered. */
+/* Reference-led rule: live diagnostics may enrich one target token, while deterministic fixtures keep the judging loop available on every provider failure. */
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import type { AlignmentResponse, TokenAlignment } from "@/lib/domain";
-import { calculateReadingMetrics } from "@/lib/reading-metrics";
+import type { AlignmentRequest } from "@/lib/domain";
+import { buildDeterministicAlignment } from "@/lib/server/deterministic-alignment";
+import { evaluateAudioWithGemini } from "@/lib/server/gemini-audio-diagnostic";
+import { applyGeminiDiagnosticToAlignment } from "@/lib/server/gemini-alignment-mapper";
+
+const MAX_BASE64_AUDIO_LENGTH = 2_000_000;
+const alignmentSourceHeaders = (source: "gemini" | "deterministic") => ({
+  "X-Reader-Leader-Alignment-Source": source,
+});
 
 const requestSchema = z.object({
   sessionId: z.string().min(1),
@@ -14,39 +21,51 @@ const requestSchema = z.object({
   isFinal: z.boolean(),
   currentTokenIndex: z.number().int().nonnegative().optional(),
   audioBytes: z.number().int().nonnegative().optional(),
+  targetToken: z.enum(["knight", "horse"]).optional(),
+  audioBase64: z.string().min(4).max(MAX_BASE64_AUDIO_LENGTH).optional(),
+  audioMimeType: z.literal("audio/wav").optional(),
   demoAttempt: z.enum(["standard", "sounded-silent-k"]).optional(),
 });
+
+function safeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message.slice(0, 240) : "Unknown Gemini provider error";
+}
 
 export async function POST(request: Request) {
   const parsed = requestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "INVALID_ALIGNMENT_REQUEST", issues: z.treeifyError(parsed.error) }, { status: 400 });
 
-  const input = parsed.data;
-  const words = input.targetText.trim().split(/\s+/);
-  const elapsedSeconds = Math.max(input.elapsedMs / 1000, 1);
-  const tokens: TokenAlignment[] = words.map((token, index) => {
-    const normalised = token.toLowerCase().replace(/[^a-z']/g, "");
-    if (normalised === "knight" && input.demoAttempt === "sounded-silent-k") {
-      return { id: `${input.sessionId}-${index}`, token, index, status: "review", confidence: 0.86, heardAs: "k-night", phoneticDisplay: "/k-n-aɪ-t/", explanation: "Child sounded out the silent ‘k’ (pronounced as /k-n-aɪ-t/).", scoreImpact: false, cueRecommendation: "Stay neutral while the educator reviews the attempt." };
-    }
-    if (normalised === "knight") {
-      return { id: `${input.sessionId}-${index}`, token, index, status: input.evaluationMode === "regional-restraint" ? "accepted-regional-variant" : "correct", confidence: 0.99, heardAs: "night", phoneticDisplay: "/n-aɪ-t/", explanation: "Correct reading: the initial ‘k’ is silent.", scoreImpact: false };
-    }
-    if (normalised === "horse" && input.evaluationMode === "regional-restraint") {
-      return { id: `${input.sessionId}-${index}`, token, index, status: "accepted-regional-variant", confidence: 0.97, heardAs: "rhotic horse", phoneticDisplay: "/hɔːrs/", explanation: "Accepted rhotic /r/ in Hiberno-English and Northern Irish speech. Reader Leader stays silent.", scoreImpact: false };
-    }
-    if (normalised === "horse" && input.evaluationMode === "standard-rp") {
-      return { id: `${input.sessionId}-${index}`, token, index, status: "substitution", confidence: 0.72, heardAs: "rhotic horse", phoneticDisplay: "/hɔːrs/", explanation: "Baseline ASR simulated a false correction for the regional rhotic /r/.", scoreImpact: true, falseCorrection: true, cueRecommendation: "Amber interrupt: repeat using the baseline pronunciation model." };
-    }
-    return { id: `${input.sessionId}-${index}`, token, index, status: "correct", confidence: 0.98, scoreImpact: false };
-  });
+  const input: AlignmentRequest = parsed.data;
+  const fallback = buildDeterministicAlignment(input);
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || !input.targetToken || !input.audioBase64 || input.audioMimeType !== "audio/wav") {
+    return NextResponse.json(fallback, { headers: alignmentSourceHeaders("deterministic") });
+  }
 
-  const response: AlignmentResponse = {
-    sessionId: input.sessionId, localeProfile: input.localeProfile,
-    evaluationMode: input.evaluationMode,
-    restraintApplied: tokens.some((token) => token.status === "accepted-regional-variant"),
-    lastConfirmedTokenIndex: tokens.length - 1, tokens,
-    metrics: calculateReadingMetrics(tokens, elapsedSeconds),
-  };
-  return NextResponse.json(response);
+  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const accentProfile = input.localeProfile === "en-IE" && input.evaluationMode === "regional-restraint"
+    ? "Hiberno-English / Northern Irish"
+    : "Standard Received Pronunciation";
+
+  try {
+    const diagnostic = await evaluateAudioWithGemini({
+      apiKey,
+      model,
+      audioBase64: input.audioBase64,
+      audioMimeType: input.audioMimeType,
+      targetToken: input.targetToken,
+      accentProfile,
+    });
+    return NextResponse.json(applyGeminiDiagnosticToAlignment(fallback, diagnostic, input.targetToken), {
+      headers: alignmentSourceHeaders("gemini"),
+    });
+  } catch (error) {
+    console.error("[GeminiAlignmentFallback]", {
+      sessionId: input.sessionId,
+      targetToken: input.targetToken,
+      model,
+      error: safeErrorMessage(error),
+    });
+    return NextResponse.json(fallback, { headers: alignmentSourceHeaders("deterministic") });
+  }
 }

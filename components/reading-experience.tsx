@@ -85,8 +85,9 @@ export function ReadingExperience() {
         elapsedMs: capture.elapsedMs,
         isFinal: true,
         currentTokenIndex: currentIndex,
+        targetToken: capture.snippetBlob && story.id === "brave-knight" ? "knight" : undefined,
         demoAttempt: story.id === "brave-knight" ? "sounded-silent-k" : "standard",
-      }, capture.blob);
+      }, capture.snippetBlob);
       const knightIndex = words.findIndex((word) => stripPunctuation(word) === "knight");
       const attemptSnippet = capture.snippetBlob && knightIndex >= 0 ? {
         token: "knight",

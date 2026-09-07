@@ -4,6 +4,7 @@ export type StoryId = "fat-cat" | "big-dog" | "sun-bun" | "pig-in-mud" | "red-he
 export type BookBandId = "pink" | "red" | "yellow" | "green";
 export type AccentProfile = "en-GB" | "en-IE";
 export type EvaluationMode = "standard-rp" | "regional-restraint";
+export type GeminiTargetToken = "knight" | "horse";
 
 export interface Story {
   id: StoryId;
@@ -61,6 +62,9 @@ export interface AlignmentRequest {
   isFinal: boolean;
   currentTokenIndex?: number;
   audioBytes?: number;
+  targetToken?: GeminiTargetToken;
+  audioBase64?: string;
+  audioMimeType?: "audio/wav";
   demoAttempt?: "standard" | "sounded-silent-k";
 }
 
