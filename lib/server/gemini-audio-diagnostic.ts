@@ -29,7 +29,7 @@ export interface EvaluateAudioWithGeminiInput {
 
 export async function evaluateAudioWithGemini({
   apiKey,
-  model = "gemini-2.5-flash",
+  model = "gemini-3.6-flash",
   audioBase64,
   audioMimeType,
   targetToken,

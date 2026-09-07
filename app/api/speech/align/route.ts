@@ -42,7 +42,7 @@ export async function POST(request: Request) {
     return NextResponse.json(fallback, { headers: alignmentSourceHeaders("deterministic") });
   }
 
-  const model = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
   const accentProfile = input.localeProfile === "en-IE" && input.evaluationMode === "regional-restraint"
     ? "Hiberno-English / Northern Irish"
     : "Standard Received Pronunciation";

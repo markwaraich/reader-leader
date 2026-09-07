@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 const apiKey = process.env.GEMINI_API_KEY;
-const model = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
+const model = process.env.GEMINI_MODEL ?? "gemini-3.6-flash";
 
 describe.skipIf(!apiKey)("Gemini server credentials", () => {
   it("authorizes access to the configured model metadata", async () => {

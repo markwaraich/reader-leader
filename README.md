@@ -34,7 +34,7 @@ Install dependencies with `pnpm install`, create the compiled bundle with `pnpm 
 
 ## Gemini Audio Diagnostics
 
-The existing two-second WAV evidence clip is serialized at the alignment client boundary and sent once, after the read finishes. The server-only Google Gen AI adapter validates structured JSON, enforces Reader Leader’s rhotic `horse` and silent-`k` policies, and maps the result into the existing Running Record token fields. The provider model is selected with `GEMINI_MODEL`; source defaults to `gemini-2.5-flash`, while the current runtime uses a provider-available model override. Missing credentials, quota errors, unavailable models, malformed output, and network failures return the complete deterministic Running Record with HTTP 200.
+The existing two-second WAV evidence clip is serialized at the alignment client boundary and sent once, after the read finishes. The server-only Google Gen AI adapter validates structured JSON, enforces Reader Leader’s rhotic `horse` and silent-`k` policies, and maps the result into the existing Running Record token fields. The provider model is selected with `GEMINI_MODEL` and defaults to the currently supported `gemini-3.6-flash`. Missing credentials, quota errors, unavailable models, malformed output, and network failures return the complete deterministic Running Record with HTTP 200.
 
 `GEMINI_API_KEY` and `GEMINI_MODEL` must be configured as managed server secrets for production. `.env.local` is ignored and is only for local development. Never place either value in browser-prefixed variables.
 

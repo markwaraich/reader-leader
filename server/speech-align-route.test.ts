@@ -29,7 +29,7 @@ const requestBody = {
 describe("POST /api/speech/align", () => {
   beforeEach(() => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
-    vi.stubEnv("GEMINI_MODEL", "gemini-2.5-flash");
+    vi.stubEnv("GEMINI_MODEL", "gemini-3.6-flash");
     evaluateAudioWithGemini.mockReset();
   });
 
