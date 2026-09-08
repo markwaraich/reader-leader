@@ -40,7 +40,7 @@ The existing two-second WAV evidence clip is serialized at the alignment client 
 
 ## Phonics Restraint Contract
 
-The alignment mock treats **“knight” pronounced as `/n-aɪ-t/` as correct**, applies no cue, and records a 0% penalty. The provisional educator demonstration is a separate fixture in which a child sounds the silent letter as `/k-n-aɪ-t/`. That fixture is labelled for educator review and remains non-penalising. A confirmed teacher decision becomes `accepted-teacher-override`, preserving a clean distinction from automated `accepted-regional-variant` restraint in the audit log.
+The alignment mock treats **“knight” pronounced as `/n-aɪ-t/` as correct**, applies no cue, and records a 0% penalty. When a child sounds the silent letter as `/k-n-aɪ-t/`, the word is a score-impacting provisional phonics error and the 14-word record begins at 93% accuracy. An educator can confirm the error as `confirmed-phonics-error`, preserving 93%, or record `accepted-teacher-override` when the AI misheard a fluent attempt, restoring 100%. Both remain distinct from automated `accepted-regional-variant` restraint in the audit log.
 
 ## Audio Lifecycle
 

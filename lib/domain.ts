@@ -18,7 +18,7 @@ export interface Story {
 
 export type StorySnapshot = Pick<Story, "id" | "title" | "level" | "band" | "bandLabel" | "focus" | "targetText">;
 
-export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "review" | "substitution" | "omission" | "hesitation";
+export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "confirmed-phonics-error" | "review" | "substitution" | "omission" | "hesitation";
 
 export interface TokenAlignment {
   id: string;

@@ -41,8 +41,8 @@ const runningRecordTokens: TokenAlignment[] = "The brave knight went out into th
 
 runningRecordTokens[2] = {
   ...runningRecordTokens[2], token: "knight", status: "review", confidence: 0.86, heardAs: "k-night", phoneticDisplay: "/k-n-aɪ-t/",
-  explanation: "Child sounded out the silent ‘k’ (pronounced as /k-n-aɪ-t/).", scoreImpact: false,
-  cueRecommendation: "Review only; do not penalise until educator judgement is confirmed.",
+  explanation: "Child sounded out the silent ‘k’ (pronounced as /k-n-aɪ-t/).", scoreImpact: true,
+  cueRecommendation: "Confirm the phonics error or override the AI if the recording was misheard.",
 };
 
 runningRecordTokens[13] = {
@@ -53,7 +53,7 @@ runningRecordTokens[13] = {
 
 export const SEEDED_RUNNING_RECORD: AlignmentResponse = {
   sessionId: "session-jack-001", localeProfile: "en-IE", evaluationMode: "regional-restraint", restraintApplied: true, lastConfirmedTokenIndex: 13,
-  tokens: runningRecordTokens, metrics: { accuracyRate: 94, wcpm: 62, elapsedSeconds: 21, falseCorrectionRate: 0 },
+  tokens: runningRecordTokens, metrics: { accuracyRate: 93, wcpm: 62, elapsedSeconds: 21, falseCorrectionRate: 0 },
 };
 
 export const CLASS_STUDENTS: StudentMetric[] = [

@@ -61,7 +61,7 @@ export function enforceReaderLeaderDiagnosticPolicy(
       status: "misread",
       errorType: "grapheme-confusion",
       restraintApplied: false,
-      diagnosticReasoning: "Child sounded out the silent ‘k’ in ‘knight’; retain for educator review.",
+      diagnosticReasoning: "Child sounded out the silent ‘k’ in ‘knight’; record as a provisional phonics error pending educator review.",
     };
   }
 

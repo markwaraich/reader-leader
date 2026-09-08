@@ -56,7 +56,8 @@ describe("POST /api/speech/align", () => {
       token: "knight",
       status: "review",
       phoneticDisplay: "/k-n-aɪ-t/",
-      scoreImpact: false,
+      scoreImpact: true,
     });
+    expect(body.metrics.accuracyRate).toBe(93);
   });
 });

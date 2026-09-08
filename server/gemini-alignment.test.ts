@@ -16,7 +16,7 @@ const request: AlignmentRequest = {
 };
 
 describe("Gemini diagnostic policy", () => {
-  it("forces a sounded silent k into non-penalising educator review", () => {
+  it("forces a sounded silent k into score-impacting provisional educator review", () => {
     const diagnostic = enforceReaderLeaderDiagnosticPolicy({
       targetToken: "knight",
       spokenPhonemes: "/k-n-aɪ-t/",
@@ -38,7 +38,8 @@ describe("Gemini diagnostic policy", () => {
       errorType: "grapheme-confusion",
       restraintApplied: false,
     });
-    expect(knight).toMatchObject({ status: "review", scoreImpact: false, phoneticDisplay: "/k-n-aɪ-t/" });
+    expect(knight).toMatchObject({ status: "review", scoreImpact: true, phoneticDisplay: "/k-n-aɪ-t/" });
+    expect(alignment.metrics.accuracyRate).toBe(93);
   });
 
   it("accepts regional rhotic horse with zero score impact", () => {

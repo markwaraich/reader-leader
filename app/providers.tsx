@@ -2,7 +2,7 @@
 
 /* Reference-led rule: shared state must remain invisible to the child-facing composition and preserve one calm action at a time. */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { DEFAULT_STATE, getStorySnapshot } from "@/lib/seed";
+import { DEFAULT_STATE, SEEDED_RUNNING_RECORD, getStory, getStorySnapshot } from "@/lib/seed";
 import { loadReaderLeaderState, saveReaderLeaderState } from "@/lib/session-storage";
 import { recalculateAlignmentMetrics } from "@/lib/reading-metrics";
 import type { AlignmentResponse, AttemptAudioSnippet, EvaluationMode, ReaderLeaderState, Story } from "@/lib/domain";
@@ -17,6 +17,7 @@ interface SessionContextValue {
   setEvaluationMode: (mode: EvaluationMode) => void;
   beginAlignment: (elapsedMs: number) => void;
   completeReading: (alignment: AlignmentResponse, elapsedMs: number, attemptSnippet?: AttemptAudioSnippet) => void;
+  confirmPhonicsError: (tokenId: string, reason: string) => void;
   confirmOverride: (tokenId: string, reason: string) => void;
   reset: () => void;
 }
@@ -123,11 +124,55 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
+  const confirmPhonicsError = useCallback((tokenId: string, reason: string) => {
+    setState((current) => {
+      const alignment = current.session.alignment ?? SEEDED_RUNNING_RECORD;
+      const token = alignment?.tokens.find((candidate) => candidate.id === tokenId);
+      if (!alignment || !token || token.status === "confirmed-phonics-error") return current;
+      const usingSeededRecord = !current.session.alignment;
+
+      const updatedAlignment = recalculateAlignmentMetrics({
+        ...alignment,
+        tokens: alignment.tokens.map((candidate) => candidate.id === tokenId
+          ? {
+              ...candidate,
+              status: "confirmed-phonics-error",
+              scoreImpact: true,
+              explanation: "Confirmed: child sounded the silent ‘k’ in ‘knight’ (/k-n-aɪ-t/).",
+              cueRecommendation: "Silent consonant intervention required.",
+            }
+          : candidate),
+      });
+
+      return {
+        ...current,
+        session: {
+          ...current.session,
+          id: usingSeededRecord ? alignment.sessionId : current.session.id,
+          storyId: usingSeededRecord ? "brave-knight" : current.session.storyId,
+          storySnapshot: usingSeededRecord ? getStorySnapshot(getStory("brave-knight")) : current.session.storySnapshot,
+          alignment: updatedAlignment,
+        },
+        overrides: [...current.overrides, {
+          id: globalThis.crypto.randomUUID(),
+          sessionId: usingSeededRecord ? alignment.sessionId : current.session.id,
+          tokenId,
+          previousStatus: token.status,
+          nextStatus: "confirmed-phonics-error",
+          actorLabel: "Jack Murphy’s educator",
+          reason,
+          createdAt: new Date().toISOString(),
+        }],
+      };
+    });
+  }, []);
+
   const confirmOverride = useCallback((tokenId: string, reason: string) => {
     setState((current) => {
-      const alignment = current.session.alignment;
+      const alignment = current.session.alignment ?? SEEDED_RUNNING_RECORD;
       const token = alignment?.tokens.find((candidate) => candidate.id === tokenId);
       if (!alignment || !token || token.status === "accepted-teacher-override") return current;
+      const usingSeededRecord = !current.session.alignment;
 
       const updatedAlignment = recalculateAlignmentMetrics({
         ...alignment,
@@ -138,10 +183,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
       return {
         ...current,
-        session: { ...current.session, alignment: updatedAlignment },
+        session: {
+          ...current.session,
+          id: usingSeededRecord ? alignment.sessionId : current.session.id,
+          storyId: usingSeededRecord ? "brave-knight" : current.session.storyId,
+          storySnapshot: usingSeededRecord ? getStorySnapshot(getStory("brave-knight")) : current.session.storySnapshot,
+          alignment: updatedAlignment,
+        },
         overrides: [...current.overrides, {
           id: globalThis.crypto.randomUUID(),
-          sessionId: current.session.id,
+          sessionId: usingSeededRecord ? alignment.sessionId : current.session.id,
           tokenId,
           previousStatus: token.status,
           nextStatus: "accepted-teacher-override",
@@ -154,7 +205,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reset = useCallback(() => setState(DEFAULT_STATE), []);
-  const value = useMemo(() => ({ state, hydrated, selectStory, prepareReadingAttempt, startReading, setCurrentToken, setEvaluationMode, beginAlignment, completeReading, confirmOverride, reset }), [beginAlignment, completeReading, confirmOverride, hydrated, prepareReadingAttempt, reset, selectStory, setCurrentToken, setEvaluationMode, startReading, state]);
+  const value = useMemo(() => ({ state, hydrated, selectStory, prepareReadingAttempt, startReading, setCurrentToken, setEvaluationMode, beginAlignment, completeReading, confirmPhonicsError, confirmOverride, reset }), [beginAlignment, completeReading, confirmOverride, confirmPhonicsError, hydrated, prepareReadingAttempt, reset, selectStory, setCurrentToken, setEvaluationMode, startReading, state]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

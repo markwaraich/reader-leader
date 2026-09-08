@@ -108,7 +108,7 @@ createPatternedWav(AUDIO_PATH);
 rmSync(PROFILE_PATH, { force: true, recursive: true });
 const appServer = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(APP_PORT)], {
   cwd: process.cwd(),
-  env: { ...process.env, NODE_ENV: "production", NEXT_DIST_DIR: ".next-browser" },
+  env: { ...process.env, NODE_ENV: "production", NEXT_DIST_DIR: ".next-browser", GEMINI_API_KEY: "" },
   stdio: "ignore",
 });
 
@@ -171,6 +171,8 @@ try {
   const regional = regionalEnvelope.state.session;
   assert.equal(regional.currentTokenIndex, 13);
   assert.equal(regional.evaluationMode, "regional-restraint");
+  assert.equal(regional.alignment.metrics.accuracyRate, 93);
+  assert.equal(regional.alignment.tokens.find((token) => token.token === "knight").scoreImpact, true);
   assert.equal(regional.alignment.metrics.falseCorrectionRate, 0);
   assert.equal(regional.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "accepted-regional-variant");
   assert.match(regional.attemptSnippet.dataUri, /^data:audio\/wav/);
@@ -182,13 +184,23 @@ try {
   await waitForValue(client.evaluate, "document.body.textContent.includes('Listen to Attempt (2s)')");
   await client.evaluate("document.querySelector('button[aria-label=\"Play the retained two-second attempt\"]')?.click()");
   await waitForValue(client.evaluate, "document.body.textContent.includes('Playing the retained two-second attempt') || document.body.textContent.includes('Attempt playback complete')");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Review Override'))?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Accept Pronunciation')");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Accept Pronunciation'))?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Accepted by Educator')");
+  assert.equal(await client.evaluate("document.body.textContent.includes('Provisional phonics error · included in accuracy until reviewed')"), true);
+  assert.equal(await client.evaluate("document.body.textContent.includes('Override AI (Accept as Fluent)')"), true);
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm Phonics Error'))?.click()`);
+  await waitForValue(client.evaluate, `document.body.textContent.includes("Confirmed: Sounded silent 'k'")`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Silent consonant intervention required')");
+  const confirmedEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
+  assert.equal(confirmedEnvelope.state.session.alignment.metrics.accuracyRate, 93);
+  assert.equal(confirmedEnvelope.state.session.alignment.tokens.find((token) => token.token === "knight").status, "confirmed-phonics-error");
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Override AI (Accept as Fluent)'))?.click()`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Confirm: Accept as Fluent')");
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm: Accept as Fluent'))?.click()`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Accepted as fluent by educator')");
   const overrideEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
   assert.equal(overrideEnvelope.state.overrides.at(-1).sessionId, regional.id);
   assert.equal(overrideEnvelope.state.session.alignment.tokens.find((token) => token.token === "knight").status, "accepted-teacher-override");
+  assert.equal(overrideEnvelope.state.session.alignment.metrics.accuracyRate, 100);
+  assert.equal(await client.evaluate("document.body.textContent.includes('Teacher override saved.')"), true);
 
   await client.command("Page.navigate", { url: APP_URL });
   await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");

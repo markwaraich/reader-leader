@@ -22,7 +22,7 @@ export function applyGeminiDiagnosticToAlignment(
   if (targetIndex < 0) return alignment;
 
   const status = statusFromDiagnostic(diagnostic);
-  const scoreImpact = status === "substitution" || status === "omission";
+  const scoreImpact = status === "substitution" || status === "omission" || diagnostic.errorType === "grapheme-confusion";
   const tokens = alignment.tokens.map((token, index) => index === targetIndex ? {
     ...token,
     status,
@@ -32,7 +32,7 @@ export function applyGeminiDiagnosticToAlignment(
     scoreImpact,
     falseCorrection: status === "accepted-regional-variant" ? false : token.falseCorrection,
     cueRecommendation: status === "review"
-      ? "Stay neutral while the educator reviews the attempt."
+      ? "Confirm the phonics error or override the AI if the recording was misheard."
       : token.cueRecommendation,
   } : token);
 

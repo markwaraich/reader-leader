@@ -16,8 +16,8 @@ export function buildDeterministicAlignment(input: AlignmentRequest): AlignmentR
         heardAs: "k-night",
         phoneticDisplay: "/k-n-aɪ-t/",
         explanation: "Child sounded out the silent ‘k’ (pronounced as /k-n-aɪ-t/).",
-        scoreImpact: false,
-        cueRecommendation: "Stay neutral while the educator reviews the attempt.",
+        scoreImpact: true,
+        cueRecommendation: "Confirm the phonics error or override the AI if the recording was misheard.",
       };
     }
     if (normalised === "knight") {

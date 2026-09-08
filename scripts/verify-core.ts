@@ -50,7 +50,7 @@ assert.equal(shouldShowBaselineInterrupt("standard-rp", "horse.", true, BASELINE
 assert.equal(shouldShowBaselineInterrupt("standard-rp", "horse.", true, BASELINE_ASR_PATIENCE_MS), true);
 assert.equal(shouldShowBaselineInterrupt("regional-restraint", "horse.", true, BASELINE_ASR_PATIENCE_MS), false);
 
-const statuses: AlignmentStatus[] = ["correct", "substitution", "accepted-teacher-override"];
+const statuses: AlignmentStatus[] = ["correct", "substitution", "confirmed-phonics-error", "accepted-teacher-override"];
 assert.notEqual(statuses[2], "accepted-regional-variant");
 const tokens: TokenAlignment[] = statuses.map((status, index) => ({
   id: `token-${index}`,
@@ -58,12 +58,22 @@ const tokens: TokenAlignment[] = statuses.map((status, index) => ({
   index,
   status,
   confidence: 0.9,
-  scoreImpact: status === "substitution",
+  scoreImpact: status === "substitution" || status === "confirmed-phonics-error",
   falseCorrection: status === "substitution",
 }));
 const metrics = calculateReadingMetrics(tokens, 60);
-assert.equal(metrics.accuracyRate, 67);
+assert.equal(metrics.accuracyRate, 50);
 assert.equal(metrics.wcpm, 2);
-assert.equal(metrics.falseCorrectionRate, 33.3);
+assert.equal(metrics.falseCorrectionRate, 25);
+
+const provisionalKnightTokens: TokenAlignment[] = Array.from({ length: 14 }, (_, index) => ({
+  id: `story-token-${index}`,
+  token: index === 2 ? "knight" : `word-${index}`,
+  index,
+  status: index === 2 ? "review" : "correct",
+  confidence: 0.9,
+  scoreImpact: index === 2,
+}));
+assert.equal(calculateReadingMetrics(provisionalKnightTokens, 60).accuracyRate, 93);
 
 console.log("Core FSM, metrics, and override-taxonomy checks passed.");

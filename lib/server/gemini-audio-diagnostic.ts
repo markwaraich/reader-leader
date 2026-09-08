@@ -14,7 +14,7 @@ Return only the requested structured JSON and assess only the supplied target wo
 
 Accent Restraint Rule: If the accent profile is "Hiberno-English / Northern Irish", the target word is "horse", and the child uses rhotic /hɔːɹs/, return status="accepted-regional-variant", errorType="none", and restraintApplied=true. Do not penalise that regional pronunciation.
 
-Silent Letter Phonics Rule: If the target word is "knight" and the child sounds the initial silent k as /k-n-aɪ-t/, return status="misread", errorType="grapheme-confusion", and restraintApplied=false.
+Silent Letter Phonics Rule: If the target word is "knight" and the child sounds the initial silent k as /k-n-aɪ-t/, return status="misread", errorType="grapheme-confusion", and restraintApplied=false. This is a genuine provisional decoding error unless an educator overrides an AI mishearing.
 
 If the target is read fluently, return status="fluent" and errorType="none". If the clip contains a prolonged attempt without a completed word, return status="hesitation". Keep diagnosticReasoning concise and evidence-based.`;
 

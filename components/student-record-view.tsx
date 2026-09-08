@@ -12,7 +12,7 @@ export function StudentRecordView() {
   const hasLatestRecord = Boolean(state.session.alignment);
   const alignment = state.session.alignment ?? SEEDED_RUNNING_RECORD;
   const bandLabel = hasLatestRecord ? state.session.storySnapshot.bandLabel : "Level 5: Green Book Band";
-  const latestOverride = state.overrides.filter((event) => event.sessionId === alignment.sessionId).at(-1);
+  const latestDecision = state.overrides.filter((event) => event.sessionId === alignment.sessionId).at(-1);
   const introductoryRecord = hasLatestRecord && state.session.storySnapshot.level <= 3;
   const introductoryFocus = state.session.storySnapshot.focus.toLowerCase();
 
@@ -23,7 +23,7 @@ export function StudentRecordView() {
       <div className="mt-5 grid gap-6 lg:grid-cols-[minmax(0,1fr)_350px]">
         <RunningRecord alignment={alignment} />
         <aside className="educator-card p-6"><h2 className="text-2xl font-black">Phonics Assessment History</h2><ol className="mt-8 space-y-9 border-l-4 border-slate-200 pl-6 text-lg">
-          {latestOverride && <li><strong>Just now</strong><span className="mt-1 block">Teacher accepted the sounded silent ‘k’</span><span className="mt-1 block text-sm text-slate-500">{new Date(latestOverride.createdAt).toLocaleString("en-GB")}</span></li>}
+          {latestDecision && <li><strong>Just now</strong><span className="mt-1 block">{latestDecision.nextStatus === "confirmed-phonics-error" ? "Silent consonant intervention required" : "Teacher overrode AI and accepted ‘knight’ as fluent"}</span><span className="mt-1 block text-sm text-slate-500">{new Date(latestDecision.createdAt).toLocaleString("en-GB")}</span></li>}
           {introductoryRecord ? <>
             <li><strong>Today</strong><span className="mt-1 block">Practising {introductoryFocus} and short vowels</span></li>
             <li><strong>1 Week Ago</strong><span className="mt-1 block">Built confidence blending simple words</span></li>
