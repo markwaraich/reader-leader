@@ -16,8 +16,9 @@ interface SessionContextValue {
   setCurrentToken: (tokenIndex: number) => void;
   setEvaluationMode: (mode: EvaluationMode) => void;
   beginAlignment: (elapsedMs: number) => void;
-  completeReading: (alignment: AlignmentResponse, elapsedMs: number, attemptSnippet?: AttemptAudioSnippet) => void;
+  completeReading: (alignment: AlignmentResponse, elapsedMs: number, attemptSnippets?: AttemptAudioSnippet[]) => void;
   confirmPhonicsError: (tokenId: string, reason: string) => void;
+  confirmMisread: (tokenId: string, reason: string) => void;
   confirmOverride: (tokenId: string, reason: string) => void;
   reset: () => void;
 }
@@ -59,6 +60,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         currentTokenIndex: 0,
         elapsedMs: 0,
         alignment: undefined,
+        attemptSnippets: undefined,
         attemptSnippet: undefined,
         earnedBadges: [],
       },
@@ -75,6 +77,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         currentTokenIndex: 0,
         elapsedMs: 0,
         alignment: undefined,
+        attemptSnippets: undefined,
         attemptSnippet: undefined,
         earnedBadges: [],
         startedAt: undefined,
@@ -86,7 +89,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const startReading = useCallback(() => {
     setState((current) => ({
       ...current,
-      session: { ...current.session, status: "reading", currentTokenIndex: 0, startedAt: new Date().toISOString(), completedAt: undefined, elapsedMs: 0, alignment: undefined, attemptSnippet: undefined },
+      session: { ...current.session, status: "reading", currentTokenIndex: 0, startedAt: new Date().toISOString(), completedAt: undefined, elapsedMs: 0, alignment: undefined, attemptSnippets: undefined, attemptSnippet: undefined },
     }));
   }, []);
 
@@ -109,14 +112,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState((current) => ({ ...current, session: { ...current.session, status: "aligning", elapsedMs } }));
   }, []);
 
-  const completeReading = useCallback((alignment: AlignmentResponse, elapsedMs: number, attemptSnippet?: AttemptAudioSnippet) => {
+  const completeReading = useCallback((alignment: AlignmentResponse, elapsedMs: number, attemptSnippets?: AttemptAudioSnippet[]) => {
     setState((current) => ({
       ...current,
       session: {
         ...current.session,
         status: "complete",
         alignment,
-        attemptSnippet,
+        attemptSnippets,
+        attemptSnippet: attemptSnippets?.find((snippet) => snippet.token === "knight"),
         elapsedMs,
         completedAt: new Date().toISOString(),
         earnedBadges: ["great-listening", "phonics-champion", "speed-reader"],
@@ -167,6 +171,48 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const confirmMisread = useCallback((tokenId: string, reason: string) => {
+    setState((current) => {
+      const alignment = current.session.alignment ?? SEEDED_RUNNING_RECORD;
+      const token = alignment.tokens.find((candidate) => candidate.id === tokenId);
+      if (!token || token.status === "confirmed-misread") return current;
+      const usingSeededRecord = !current.session.alignment;
+      const updatedAlignment = recalculateAlignmentMetrics({
+        ...alignment,
+        tokens: alignment.tokens.map((candidate) => candidate.id === tokenId
+          ? {
+              ...candidate,
+              status: "confirmed-misread",
+              scoreImpact: true,
+              falseCorrection: false,
+              explanation: `${candidate.explanation ?? "Pronunciation reviewed."} Authentic misread confirmed by educator.`,
+            }
+          : candidate),
+      });
+
+      return {
+        ...current,
+        session: {
+          ...current.session,
+          id: usingSeededRecord ? alignment.sessionId : current.session.id,
+          storyId: usingSeededRecord ? "brave-knight" : current.session.storyId,
+          storySnapshot: usingSeededRecord ? getStorySnapshot(getStory("brave-knight")) : current.session.storySnapshot,
+          alignment: updatedAlignment,
+        },
+        overrides: [...current.overrides, {
+          id: globalThis.crypto.randomUUID(),
+          sessionId: usingSeededRecord ? alignment.sessionId : current.session.id,
+          tokenId,
+          previousStatus: token.status,
+          nextStatus: "confirmed-misread",
+          actorLabel: "Jack Murphy’s educator",
+          reason,
+          createdAt: new Date().toISOString(),
+        }],
+      };
+    });
+  }, []);
+
   const confirmOverride = useCallback((tokenId: string, reason: string) => {
     setState((current) => {
       const alignment = current.session.alignment ?? SEEDED_RUNNING_RECORD;
@@ -177,7 +223,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const updatedAlignment = recalculateAlignmentMetrics({
         ...alignment,
         tokens: alignment.tokens.map((candidate) => candidate.id === tokenId
-          ? { ...candidate, status: "accepted-teacher-override", scoreImpact: false, explanation: `${candidate.explanation ?? "Pronunciation reviewed."} Accepted by educator.` }
+          ? { ...candidate, status: "accepted-teacher-override", scoreImpact: false, falseCorrection: false, explanation: `${candidate.explanation ?? "Pronunciation reviewed."} Accepted by educator.` }
           : candidate),
       });
 
@@ -205,7 +251,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const reset = useCallback(() => setState(DEFAULT_STATE), []);
-  const value = useMemo(() => ({ state, hydrated, selectStory, prepareReadingAttempt, startReading, setCurrentToken, setEvaluationMode, beginAlignment, completeReading, confirmPhonicsError, confirmOverride, reset }), [beginAlignment, completeReading, confirmOverride, confirmPhonicsError, hydrated, prepareReadingAttempt, reset, selectStory, setCurrentToken, setEvaluationMode, startReading, state]);
+  const value = useMemo(() => ({ state, hydrated, selectStory, prepareReadingAttempt, startReading, setCurrentToken, setEvaluationMode, beginAlignment, completeReading, confirmPhonicsError, confirmMisread, confirmOverride, reset }), [beginAlignment, completeReading, confirmMisread, confirmOverride, confirmPhonicsError, hydrated, prepareReadingAttempt, reset, selectStory, setCurrentToken, setEvaluationMode, startReading, state]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

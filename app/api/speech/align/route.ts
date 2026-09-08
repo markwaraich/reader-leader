@@ -24,6 +24,12 @@ const requestSchema = z.object({
   targetToken: z.enum(["knight", "horse"]).optional(),
   audioBase64: z.string().min(4).max(MAX_BASE64_AUDIO_LENGTH).optional(),
   audioMimeType: z.literal("audio/wav").optional(),
+  audioEvidence: z.array(z.object({
+    targetToken: z.enum(["knight", "horse"]),
+    audioBase64: z.string().min(4).max(MAX_BASE64_AUDIO_LENGTH),
+    audioMimeType: z.literal("audio/wav"),
+    audioBytes: z.number().int().nonnegative(),
+  })).max(2).optional(),
   demoAttempt: z.enum(["standard", "sounded-silent-k"]).optional(),
 });
 
@@ -38,7 +44,12 @@ export async function POST(request: Request) {
   const input: AlignmentRequest = parsed.data;
   const fallback = buildDeterministicAlignment(input);
   const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || !input.targetToken || !input.audioBase64 || input.audioMimeType !== "audio/wav") {
+  const evidence = parsed.data.audioEvidence?.length
+    ? parsed.data.audioEvidence
+    : input.targetToken && input.audioBase64 && input.audioMimeType === "audio/wav"
+      ? [{ targetToken: input.targetToken, audioBase64: input.audioBase64, audioMimeType: input.audioMimeType, audioBytes: input.audioBytes ?? 0 }]
+      : [];
+  if (!apiKey || evidence.length === 0) {
     return NextResponse.json(fallback, { headers: alignmentSourceHeaders("deterministic") });
   }
 
@@ -47,25 +58,30 @@ export async function POST(request: Request) {
     ? "Hiberno-English / Northern Irish"
     : "Standard Received Pronunciation";
 
-  try {
-    const diagnostic = await evaluateAudioWithGemini({
-      apiKey,
-      model,
-      audioBase64: input.audioBase64,
-      audioMimeType: input.audioMimeType,
-      targetToken: input.targetToken,
-      accentProfile,
-    });
-    return NextResponse.json(applyGeminiDiagnosticToAlignment(fallback, diagnostic, input.targetToken), {
-      headers: alignmentSourceHeaders("gemini"),
-    });
-  } catch (error) {
-    console.error("[GeminiAlignmentFallback]", {
-      sessionId: input.sessionId,
-      targetToken: input.targetToken,
-      model,
-      error: safeErrorMessage(error),
-    });
-    return NextResponse.json(fallback, { headers: alignmentSourceHeaders("deterministic") });
+  let alignment = fallback;
+  let liveDiagnostics = 0;
+  for (const clip of evidence) {
+    try {
+      const diagnostic = await evaluateAudioWithGemini({
+        apiKey,
+        model,
+        audioBase64: clip.audioBase64,
+        audioMimeType: clip.audioMimeType,
+        targetToken: clip.targetToken,
+        accentProfile,
+      });
+      alignment = applyGeminiDiagnosticToAlignment(alignment, diagnostic, clip.targetToken);
+      liveDiagnostics += 1;
+    } catch (error) {
+      console.error("[GeminiAlignmentFallback]", {
+        sessionId: input.sessionId,
+        targetToken: clip.targetToken,
+        model,
+        error: safeErrorMessage(error),
+      });
+    }
   }
+  return NextResponse.json(alignment, {
+    headers: alignmentSourceHeaders(liveDiagnostics > 0 ? "gemini" : "deterministic"),
+  });
 }

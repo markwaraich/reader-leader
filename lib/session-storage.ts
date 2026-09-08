@@ -37,6 +37,13 @@ function normaliseState(value: unknown): ReaderLeaderState {
     && rawSession.attemptSnippet.dataUri.startsWith("data:audio/")
     ? rawSession.attemptSnippet
     : undefined;
+  const attemptSnippets = Array.isArray(rawSession.attemptSnippets)
+    ? rawSession.attemptSnippets.filter((snippet) => snippet
+      && typeof snippet.dataUri === "string"
+      && snippet.dataUri.startsWith("data:audio/"))
+    : attemptSnippet
+      ? [attemptSnippet]
+      : undefined;
 
   return {
     ...DEFAULT_STATE,
@@ -51,6 +58,7 @@ function normaliseState(value: unknown): ReaderLeaderState {
       localeProfile: evaluationMode === "regional-restraint" ? "en-IE" : "en-GB",
       elapsedMs: rawSession.elapsedMs ?? 0,
       alignment: isObsoletePhaseOneRecord ? undefined : rawSession.alignment,
+      attemptSnippets,
       attemptSnippet,
     },
     overrides: Array.isArray(candidate.overrides) ? candidate.overrides : [],

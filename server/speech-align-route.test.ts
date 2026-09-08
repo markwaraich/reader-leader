@@ -38,6 +38,46 @@ describe("POST /api/speech/align", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps fluent Standard RP knight correct while evaluating horse independently", async () => {
+    evaluateAudioWithGemini
+      .mockResolvedValueOnce({
+        targetToken: "knight",
+        spokenPhonemes: "/n-aɪ-t/",
+        status: "fluent",
+        errorType: "none",
+        restraintApplied: false,
+        diagnosticReasoning: "The initial k was silent.",
+      })
+      .mockResolvedValueOnce({
+        targetToken: "horse",
+        spokenPhonemes: "/haʊs/",
+        status: "misread",
+        errorType: "substitution",
+        restraintApplied: false,
+        diagnosticReasoning: "The target was replaced with house.",
+      });
+
+    const response = await POST(new Request("http://localhost/api/speech/align", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...requestBody,
+        localeProfile: "en-GB",
+        evaluationMode: "standard-rp",
+        audioEvidence: [
+          { targetToken: "knight", audioBase64: "UklGRgAAAAAXQVZF", audioMimeType: "audio/wav", audioBytes: 44 },
+          { targetToken: "horse", audioBase64: "UklGRgAAAAAXQVZF", audioMimeType: "audio/wav", audioBytes: 44 },
+        ],
+      }),
+    }));
+    const body = await response.json();
+
+    expect(response.headers.get("X-Reader-Leader-Alignment-Source")).toBe("gemini");
+    expect(evaluateAudioWithGemini).toHaveBeenCalledTimes(2);
+    expect(body.tokens.find((token: { token: string }) => token.token === "knight")).toMatchObject({ status: "correct", scoreImpact: false, phoneticDisplay: "/n-aɪ-t/" });
+    expect(body.tokens.find((token: { token: string }) => token.token.startsWith("horse"))).toMatchObject({ status: "substitution", scoreImpact: true, phoneticDisplay: "/haʊs/" });
+  });
+
   it("returns deterministic HTTP 200 output when Gemini fails", async () => {
     evaluateAudioWithGemini.mockRejectedValueOnce(new Error("provider unavailable"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);

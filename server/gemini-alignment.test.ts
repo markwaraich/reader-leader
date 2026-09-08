@@ -16,6 +16,26 @@ const request: AlignmentRequest = {
 };
 
 describe("Gemini diagnostic policy", () => {
+  it("keeps Standard RP knight correct unless its own audio contains a sounded silent k", () => {
+    const standardRequest: AlignmentRequest = {
+      ...request,
+      localeProfile: "en-GB",
+      evaluationMode: "standard-rp",
+    };
+    const fallback = buildDeterministicAlignment(standardRequest);
+    const fluent = applyGeminiDiagnosticToAlignment(fallback, {
+      targetToken: "knight",
+      spokenPhonemes: "/n-aɪ-t/",
+      status: "fluent",
+      errorType: "none",
+      restraintApplied: false,
+      diagnosticReasoning: "The initial k was silent and the word was read fluently.",
+    }, "knight");
+
+    expect(fallback.tokens.find((token) => token.token === "knight")).toMatchObject({ status: "correct", scoreImpact: false });
+    expect(fluent.tokens.find((token) => token.token === "knight")).toMatchObject({ status: "correct", scoreImpact: false, phoneticDisplay: "/n-aɪ-t/" });
+  });
+
   it("forces a sounded silent k into score-impacting provisional educator review", () => {
     const diagnostic = enforceReaderLeaderDiagnosticPolicy({
       targetToken: "knight",

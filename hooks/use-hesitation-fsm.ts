@@ -19,7 +19,7 @@ export interface TimedAudioChunk {
 export interface AudioCaptureResult {
   blob: Blob | null;
   chunks: TimedAudioChunk[];
-  snippetBlob: Blob | null;
+  snippetBlobs: Record<string, Blob>;
   elapsedMs: number;
 }
 
@@ -34,7 +34,7 @@ export function useHesitationFSM() {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const snippetWindowRef = useRef<{ startMs: number; durationMs: number } | null>(null);
+  const snippetWindowsRef = useRef(new Map<string, { startMs: number; durationMs: number }>());
   const chunksRef = useRef<TimedAudioChunk[]>([]);
   const frameRef = useRef<number | null>(null);
   const startedAtRef = useRef<number | null>(null);
@@ -75,18 +75,18 @@ export function useHesitationFSM() {
     speakingRef.current = false;
   }, []);
 
-  const captureSnippet = useCallback((tokenStartMs: number, durationMs = ATTEMPT_SNIPPET_DURATION_MS, preRollMs = ATTEMPT_SNIPPET_PRE_ROLL_MS): void => {
-    if (snippetWindowRef.current) return;
+  const captureSnippet = useCallback((token: string, tokenStartMs: number, durationMs = ATTEMPT_SNIPPET_DURATION_MS, preRollMs = ATTEMPT_SNIPPET_PRE_ROLL_MS): void => {
+    if (snippetWindowsRef.current.has(token)) return;
     const window = preRollMs === ATTEMPT_SNIPPET_PRE_ROLL_MS && durationMs === ATTEMPT_SNIPPET_DURATION_MS
       ? createAttemptSnippetWindow(tokenStartMs)
       : { startMs: tokenStartMs - preRollMs, durationMs };
-    snippetWindowRef.current = { startMs: Math.max(0, window.startMs), durationMs: window.durationMs };
+    snippetWindowsRef.current.set(token, { startMs: Math.max(0, window.startMs), durationMs: window.durationMs });
   }, []);
 
   const start = useCallback(async (): Promise<boolean> => {
     disconnectAudioGraph();
     chunksRef.current = [];
-    snippetWindowRef.current = null;
+    snippetWindowsRef.current.clear();
     setSpeechStartedEpoch(0);
     setSpeechEndedEpoch(0);
     setSpeechStartedAtMs(0);
@@ -198,7 +198,7 @@ export function useHesitationFSM() {
     dispatch({ type: "BEGIN_FINISH" });
     const elapsedMs = startedAtRef.current === null ? 5_000 : Math.max(performance.now() - startedAtRef.current, 1_000);
     const recorder = recorderRef.current;
-    const snippetWindow = snippetWindowRef.current;
+    const snippetWindows = [...snippetWindowsRef.current.entries()];
 
     if (frameRef.current !== null) {
       cancelAnimationFrame(frameRef.current);
@@ -216,12 +216,14 @@ export function useHesitationFSM() {
       blob = new Blob(chunksRef.current.map((chunk) => chunk.blob), { type: chunksRef.current[0].blob.type || "audio/webm" });
     }
 
-    let snippetBlob: Blob | null = null;
-    if (blob && snippetWindow) {
-      try {
-        snippetBlob = await sliceAudioBlobToWav(blob, snippetWindow.startMs, snippetWindow.durationMs);
-      } catch {
-        setErrorMessage("The reading was captured, but the two-second evidence clip could not be prepared.");
+    const snippetBlobs: Record<string, Blob> = {};
+    if (blob) {
+      for (const [token, snippetWindow] of snippetWindows) {
+        try {
+          snippetBlobs[token] = await sliceAudioBlobToWav(blob, snippetWindow.startMs, snippetWindow.durationMs);
+        } catch {
+          setErrorMessage("The reading was captured, but a two-second evidence clip could not be prepared.");
+        }
       }
     }
 
@@ -229,16 +231,16 @@ export function useHesitationFSM() {
     recorderRef.current = null;
     disconnectAudioGraph();
     startedAtRef.current = null;
-    snippetWindowRef.current = null;
+    snippetWindowsRef.current.clear();
     dispatch({ type: "FINISHED" });
-    return { blob, chunks, snippetBlob, elapsedMs };
+    return { blob, chunks, snippetBlobs, elapsedMs };
   }, [disconnectAudioGraph]);
 
   const cancel = useCallback(() => {
     disconnectAudioGraph();
     startedAtRef.current = null;
     chunksRef.current = [];
-    snippetWindowRef.current = null;
+    snippetWindowsRef.current.clear();
     setSpeechStartedAtMs(0);
     setErrorMessage(null);
     dispatch({ type: "RESET" });

@@ -177,6 +177,8 @@ try {
   assert.equal(regional.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "accepted-regional-variant");
   assert.match(regional.attemptSnippet.dataUri, /^data:audio\/wav/);
   assert.equal(regional.attemptSnippet.durationMs, 2_000);
+  assert.deepEqual(regional.attemptSnippets.map((snippet) => snippet.token).sort(), ["horse", "knight"]);
+  assert.equal(regional.attemptSnippets.every((snippet) => snippet.durationMs === 2_000 && snippet.dataUri.startsWith("data:audio/wav")), true);
 
   await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('View Educator Record'))?.click()`);
   await waitForValue(client.evaluate, "location.pathname === '/dashboard/student'");
@@ -219,8 +221,34 @@ try {
   const standardEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
   const standard = standardEnvelope.state.session;
   assert.equal(standard.evaluationMode, "standard-rp");
+  assert.equal(standard.alignment.tokens.find((token) => token.token === "knight").status, "correct");
   assert.equal(standard.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "substitution");
+  assert.equal(standard.alignment.metrics.accuracyRate, 93);
   assert.equal(standard.alignment.metrics.falseCorrectionRate, 7.1);
+  assert.deepEqual(standard.attemptSnippets.map((snippet) => snippet.token).sort(), ["horse", "knight"]);
+  assert.equal(standard.attemptSnippets.find((snippet) => snippet.token === "horse").durationMs, 2_000);
+
+  await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('View Educator Record'))?.click()`);
+  await waitForValue(client.evaluate, "location.pathname === '/dashboard/student'");
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'horse.')?.click()`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Accept Regional Dialect (Override Baseline)')");
+  assert.equal(await client.evaluate("document.body.textContent.includes('Confirm Misread')"), true);
+  assert.equal(await client.evaluate("document.body.textContent.includes('Listen to Attempt (2s)')"), true);
+  await client.evaluate("document.querySelector('button[aria-label=\"Play the retained two-second attempt\"]')?.click()");
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Playing the retained two-second attempt') || document.body.textContent.includes('Attempt playback complete')");
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Confirm Misread')?.click()`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Confirmed misread · accuracy penalty retained')");
+  const confirmedMisreadEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
+  assert.equal(confirmedMisreadEnvelope.state.session.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "confirmed-misread");
+  assert.equal(confirmedMisreadEnvelope.state.session.alignment.metrics.accuracyRate, 93);
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Accept Regional Dialect (Override Baseline)'))?.click()`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Teacher override saved: Accepted regional rhotic variant.')");
+  const regionalOverrideEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
+  const regionalOverride = regionalOverrideEnvelope.state.session;
+  assert.equal(regionalOverride.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "accepted-teacher-override");
+  assert.equal(regionalOverride.alignment.metrics.accuracyRate, 100);
+  assert.equal(regionalOverride.alignment.metrics.falseCorrectionRate, 0);
+  assert.equal(await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'horse.')?.className.includes('emerald')`), true);
 
   await client.command("Page.navigate", { url: APP_URL });
   await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");

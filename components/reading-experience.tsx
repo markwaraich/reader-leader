@@ -35,7 +35,7 @@ export function ReadingExperience() {
   const handledSpeechEndRef = useRef(0);
   const finalTokenSpokenRef = useRef(false);
   const finishingRef = useRef(false);
-  const snippetRequestedRef = useRef(false);
+  const snippetRequestedRef = useRef(new Set<string>());
   const preparedStoryRef = useRef<string | null>(null);
   const story = state.session.storySnapshot;
   const words = story.targetText.split(/\s+/);
@@ -50,7 +50,7 @@ export function ReadingExperience() {
     handledSpeechEndRef.current = 0;
     finalTokenSpokenRef.current = false;
     finishingRef.current = false;
-    snippetRequestedRef.current = false;
+    snippetRequestedRef.current.clear();
   }, []);
 
   useEffect(() => {
@@ -74,8 +74,17 @@ export function ReadingExperience() {
     finishingRef.current = true;
     setAlignmentError(null);
     try {
-      const capture = audio.isActive ? await audio.finish() : { blob: null, chunks: [], snippetBlob: null, elapsedMs: Math.max(state.session.elapsedMs, 5_000) };
+      const capture = audio.isActive ? await audio.finish() : { blob: null, chunks: [], snippetBlobs: {}, elapsedMs: Math.max(state.session.elapsedMs, 5_000) };
       beginAlignment(capture.elapsedMs);
+      const preferredTarget = state.session.evaluationMode === "standard-rp" ? "horse" : "knight";
+      const targetToken = capture.snippetBlobs[preferredTarget]
+        ? preferredTarget
+        : capture.snippetBlobs.knight
+          ? "knight"
+          : capture.snippetBlobs.horse
+            ? "horse"
+            : undefined;
+      const targetAudio = targetToken ? capture.snippetBlobs[targetToken] : null;
       const alignment = await alignSpeech({
         sessionId: state.session.id,
         storyId: story.id,
@@ -85,18 +94,17 @@ export function ReadingExperience() {
         elapsedMs: capture.elapsedMs,
         isFinal: true,
         currentTokenIndex: currentIndex,
-        targetToken: capture.snippetBlob && story.id === "brave-knight" ? "knight" : undefined,
+        targetToken: targetAudio && story.id === "brave-knight" ? targetToken : undefined,
         demoAttempt: story.id === "brave-knight" ? "sounded-silent-k" : "standard",
-      }, capture.snippetBlob);
-      const knightIndex = words.findIndex((word) => stripPunctuation(word) === "knight");
-      const attemptSnippet = capture.snippetBlob && knightIndex >= 0 ? {
-        token: "knight",
-        tokenIndex: knightIndex,
-        dataUri: await blobToAudioDataUri(capture.snippetBlob),
-        mimeType: capture.snippetBlob.type || "audio/webm",
+      }, targetAudio, capture.snippetBlobs);
+      const attemptSnippets = await Promise.all(Object.entries(capture.snippetBlobs).map(async ([token, snippetBlob]) => ({
+        token,
+        tokenIndex: words.findIndex((word) => stripPunctuation(word) === token),
+        dataUri: await blobToAudioDataUri(snippetBlob),
+        mimeType: snippetBlob.type || "audio/wav",
         durationMs: ATTEMPT_SNIPPET_DURATION_MS,
-      } : undefined;
-      completeReading(alignment, capture.elapsedMs, attemptSnippet);
+      })));
+      completeReading(alignment, capture.elapsedMs, attemptSnippets);
       router.push("/celebrate");
     } catch {
       setAlignmentError("We could not make the running record. Please try finishing again.");
@@ -107,9 +115,10 @@ export function ReadingExperience() {
   useEffect(() => {
     if (!audio.isActive || audio.speechStartedEpoch === 0 || audio.speechStartedEpoch === handledSpeechStartRef.current) return;
     handledSpeechStartRef.current = audio.speechStartedEpoch;
-    if (stripPunctuation(words[currentIndex]) === "knight" && !snippetRequestedRef.current) {
-      snippetRequestedRef.current = true;
-      audio.captureSnippet(audio.speechStartedAtMs, ATTEMPT_SNIPPET_DURATION_MS, ATTEMPT_SNIPPET_PRE_ROLL_MS);
+    const currentWord = stripPunctuation(words[currentIndex]);
+    if (["knight", "horse"].includes(currentWord) && !snippetRequestedRef.current.has(currentWord)) {
+      snippetRequestedRef.current.add(currentWord);
+      audio.captureSnippet(currentWord, audio.speechStartedAtMs, ATTEMPT_SNIPPET_DURATION_MS, ATTEMPT_SNIPPET_PRE_ROLL_MS);
     }
     if (currentIndex === words.length - 1) finalTokenSpokenRef.current = false;
   }, [audio, currentIndex, words]);

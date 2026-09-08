@@ -8,26 +8,33 @@ import { TwoStepOverride } from "@/components/two-step-override";
 import { audioDataUriToBlob } from "@/lib/audio-data";
 import type { AlignmentResponse, TokenAlignment } from "@/lib/domain";
 
-const interactiveStatuses = new Set(["review", "substitution", "omission", "confirmed-phonics-error", "accepted-teacher-override"]);
+const interactiveStatuses = new Set(["review", "substitution", "omission", "confirmed-phonics-error", "confirmed-misread", "accepted-teacher-override"]);
 
 function tokenClass(token: TokenAlignment): string {
   if (token.status === "accepted-teacher-override") return "rounded-lg bg-emerald-100 px-1 text-emerald-800";
-  if (["review", "substitution", "omission", "confirmed-phonics-error"].includes(token.status)) return "text-[var(--reader-red)] underline decoration-dotted decoration-[3px] underline-offset-[10px]";
+  if (["review", "substitution", "omission", "confirmed-phonics-error", "confirmed-misread"].includes(token.status)) return "text-[var(--reader-red)] underline decoration-dotted decoration-[3px] underline-offset-[10px]";
   if (token.status === "hesitation") return "rounded-lg bg-[var(--reader-amber)] px-1";
   return "";
 }
 
 export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
-  const { state, confirmPhonicsError, confirmOverride } = useReaderSession();
+  const { state, confirmMisread, confirmPhonicsError, confirmOverride } = useReaderSession();
   const [openTokenId, setOpenTokenId] = useState<string | null>(null);
   const [playbackMessage, setPlaybackMessage] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const openToken = alignment.tokens.find((token) => token.id === openTokenId) ?? null;
+  const openWord = openToken?.token.toLowerCase().replace(/[^a-z']/g, "") ?? "";
   const accepted = openToken?.status === "accepted-teacher-override";
   const confirmed = openToken?.status === "confirmed-phonics-error";
-  const snippetDataUri = state.session.attemptSnippet?.dataUri;
-  const activeSessionHasOverride = state.overrides.some((event) => event.sessionId === alignment.sessionId && event.nextStatus === "accepted-teacher-override");
+  const confirmedMisread = openToken?.status === "confirmed-misread";
+  const dialectReview = openWord === "horse";
+  const attemptSnippets = state.session.attemptSnippets ?? (state.session.attemptSnippet ? [state.session.attemptSnippet] : []);
+  const activeSnippet = attemptSnippets.find((snippet) => snippet.token === openWord);
+  const snippetDataUri = activeSnippet?.dataUri;
+  const latestOverride = state.overrides.filter((event) => event.sessionId === alignment.sessionId && event.nextStatus === "accepted-teacher-override").at(-1);
+  const latestOverrideToken = alignment.tokens.find((token) => token.id === latestOverride?.tokenId);
+  const regionalOverrideSaved = latestOverrideToken?.token.toLowerCase().replace(/[^a-z']/g, "") === "horse";
 
   const releasePlayback = useCallback(() => {
     if (audioRef.current) {
@@ -45,13 +52,12 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
 
   async function playAttempt() {
     releasePlayback();
-    const snippet = state.session.attemptSnippet;
-    if (!snippet) {
+    if (!activeSnippet) {
       setPlaybackMessage("No retained audio is available for this seeded demonstration record.");
       return;
     }
     try {
-      const objectUrl = URL.createObjectURL(audioDataUriToBlob(snippet.dataUri));
+      const objectUrl = URL.createObjectURL(audioDataUriToBlob(activeSnippet.dataUri));
       const audio = new Audio(objectUrl);
       objectUrlRef.current = objectUrl;
       audioRef.current = audio;
@@ -79,6 +85,16 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
   function overrideAsFluent() {
     if (!openToken) return;
     confirmOverride(openToken.id, "Educator determined the child read ‘knight’ fluently and the AI misheard the attempt.");
+  }
+
+  function acceptRegionalDialect() {
+    if (!openToken) return;
+    confirmOverride(openToken.id, "Accepted regional rhotic variant; educator overrode the Baseline ASR false flag.");
+  }
+
+  function confirmAuthenticMisread() {
+    if (!openToken) return;
+    confirmMisread(openToken.id, "Educator confirmed an authentic word substitution rather than a regional pronunciation variant.");
   }
 
   return (
@@ -121,33 +137,66 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
         <div aria-label={`Review ${openToken.token}`} className="mt-8 max-w-xl rounded-2xl border border-slate-300 bg-white p-5 text-base text-black shadow-lg" role="dialog">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-lg font-black">{accepted || confirmed ? "Educator decision recorded" : `Review “${openToken.token.replace(/[.,!?]/g, "")}”`}</p>
+              <p className="text-lg font-black">{accepted || confirmed || confirmedMisread ? "Educator decision recorded" : `Review “${openToken.token.replace(/[.,!?]/g, "")}”`}</p>
               <p className="mt-2">Spoken as: <strong>{openToken.phoneticDisplay ?? openToken.heardAs ?? "Not available"}</strong> ({openToken.explanation ?? "Pronunciation evidence available for review."})</p>
-              <p className={`mt-2 text-sm font-black ${accepted ? "text-emerald-700" : confirmed ? "text-[var(--reader-red)]" : "text-[var(--reader-teal-deep)]"}`}>
-                {accepted
-                  ? "Accepted as fluent by teacher override · no score penalty"
-                  : confirmed
-                    ? "Confirmed: Sounded silent 'k'"
-                    : "Provisional phonics error · included in accuracy until reviewed"}
+              <p className={`mt-2 text-sm font-black ${accepted ? "text-emerald-700" : confirmed || confirmedMisread ? "text-[var(--reader-red)]" : "text-[var(--reader-teal-deep)]"}`}>
+                {dialectReview
+                  ? accepted
+                    ? "Accepted regional rhotic variant · false correction removed"
+                    : confirmedMisread
+                      ? "Confirmed misread · accuracy penalty retained"
+                      : "Baseline ASR flag · provisional false correction"
+                  : accepted
+                    ? "Accepted as fluent by teacher override · no score penalty"
+                    : confirmed
+                      ? "Confirmed: Sounded silent 'k'"
+                      : "Provisional phonics error · included in accuracy until reviewed"}
               </p>
             </div>
             <button aria-label="Close pronunciation review" className="pressable rounded-lg p-1 text-slate-500" onClick={() => setOpenTokenId(null)} type="button"><X className="size-5" /></button>
           </div>
 
-          {openToken.token.toLowerCase().replace(/[^a-z']/g, "") === "knight" && <>
+          {activeSnippet && <>
             <button aria-label="Play the retained two-second attempt" className="pressable mt-4 flex items-center gap-2 font-black text-[var(--reader-teal-deep)]" onClick={() => void playAttempt()} type="button">
               <CirclePlay className="size-6" /> Listen to Attempt (2s)
             </button>
             {playbackMessage && <p aria-live="polite" className="mt-2 text-sm text-slate-600">{playbackMessage}</p>}
           </>}
-          <TwoStepOverride accepted={accepted} confirmed={confirmed} onConfirmError={confirmErrorDecision} onOverride={overrideAsFluent} />
+          {dialectReview ? (
+            <TwoStepOverride
+              accepted={accepted}
+              acceptedLabel="Accepted regional rhotic variant"
+              onPrimary={acceptRegionalDialect}
+              primaryConfirmed={accepted}
+              primaryConfirmedLabel="Regional Dialect Accepted"
+              primaryLabel="Accept Regional Dialect (Override Baseline)"
+              onSecondary={confirmAuthenticMisread}
+              secondaryConfirmLabel="Confirm Misread"
+              secondaryConfirmed={confirmedMisread}
+              secondaryConfirmedLabel="Misread Confirmed"
+              secondaryLabel="Confirm Misread"
+              secondaryRequiresConfirmation={false}
+            />
+          ) : (
+            <TwoStepOverride
+              accepted={accepted}
+              acceptedLabel="Accepted as fluent by educator"
+              onPrimary={confirmErrorDecision}
+              primaryConfirmed={confirmed}
+              primaryConfirmedLabel="Phonics Error Confirmed"
+              primaryLabel="Confirm Phonics Error"
+              onSecondary={overrideAsFluent}
+              secondaryConfirmLabel="Confirm: Accept as Fluent"
+              secondaryLabel="Override AI (Accept as Fluent)"
+            />
+          )}
         </div>
       )}
 
-      {activeSessionHasOverride && (
+      {latestOverride && (
         <div className="mt-8 flex items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-emerald-900" role="status">
           <CheckCircle2 className="mt-0.5 size-6 shrink-0" />
-          <p><strong>Teacher override saved.</strong> The latest audit entry is stored locally with the original and accepted classifications.</p>
+          <p><strong>{regionalOverrideSaved ? "Teacher override saved: Accepted regional rhotic variant." : "Teacher override saved."}</strong> The latest audit entry is stored locally with the original and accepted classifications.</p>
         </div>
       )}
     </section>

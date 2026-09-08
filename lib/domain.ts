@@ -18,7 +18,7 @@ export interface Story {
 
 export type StorySnapshot = Pick<Story, "id" | "title" | "level" | "band" | "bandLabel" | "focus" | "targetText">;
 
-export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "confirmed-phonics-error" | "review" | "substitution" | "omission" | "hesitation";
+export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "confirmed-phonics-error" | "confirmed-misread" | "review" | "substitution" | "omission" | "hesitation";
 
 export interface TokenAlignment {
   id: string;
@@ -110,6 +110,8 @@ export interface ReadingSession {
   currentTokenIndex: number;
   elapsedMs: number;
   alignment?: AlignmentResponse;
+  attemptSnippets?: AttemptAudioSnippet[];
+  /** Legacy single-snippet field retained for persisted-session migration. */
   attemptSnippet?: AttemptAudioSnippet;
   earnedBadges: string[];
   startedAt?: string;

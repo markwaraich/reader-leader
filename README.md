@@ -34,7 +34,7 @@ Install dependencies with `pnpm install`, create the compiled bundle with `pnpm 
 
 ## Gemini Audio Diagnostics
 
-The existing two-second WAV evidence clip is serialized at the alignment client boundary and sent once, after the read finishes. The server-only Google Gen AI adapter validates structured JSON, enforces Reader Leader’s rhotic `horse` and silent-`k` policies, and maps the result into the existing Running Record token fields. The provider model is selected with `GEMINI_MODEL` and defaults to the currently supported `gemini-3.6-flash`. Missing credentials, quota errors, unavailable models, malformed output, and network failures return the complete deterministic Running Record with HTTP 200.
+Independent two-second WAV evidence clips for `knight` and final-token `horse` are serialized at the alignment client boundary and sent once, after the read finishes. The server-only Google Gen AI adapter validates structured JSON, enforces Reader Leader’s rhotic `horse` and silent-`k` policies, and maps each result into its matching Running Record token. The provider model is selected with `GEMINI_MODEL` and defaults to the currently supported `gemini-3.6-flash`. Missing credentials, quota errors, unavailable models, malformed output, and network failures return the complete deterministic Running Record with HTTP 200; Standard RP never inherits the demonstration silent-`k` error without diagnostic evidence.
 
 `GEMINI_API_KEY` and `GEMINI_MODEL` must be configured as managed server secrets for production. `.env.local` is ignored and is only for local development. Never place either value in browser-prefixed variables.
 
@@ -44,7 +44,7 @@ The alignment mock treats **“knight” pronounced as `/n-aɪ-t/` as correct**,
 
 ## Audio Lifecycle
 
-The microphone hook owns its complete resource graph. Starting creates one stream, source, analyser, animation-frame loop, optional session recorder, bounded two-second attempt recorder, and audio context. Finishing, cancellation, errors, and component unmount stop every media track, cancel the frame loop, disconnect source and analyser nodes, stop active recorders, and close the `AudioContext` idempotently. The retained `knight` segment is encoded as a local audio data URI; educator playback uses a temporary object URL that is revoked on completion, session reset/change, or unmount.
+The microphone hook owns its complete resource graph. Starting creates one stream, source, analyser, animation-frame loop, optional session recorder, bounded token-evidence windows, and audio context. Finishing, cancellation, errors, and component unmount stop every media track, cancel the frame loop, disconnect source and analyser nodes, stop active recorders, and close the `AudioContext` idempotently. The retained `knight` and `horse` segments are encoded as local audio data URIs; educator playback resolves the selected token’s clip through a temporary object URL that is revoked on completion, session reset/change, or unmount.
 
 The analyser ignores all startup energy for 300 ms after microphone activation and then requires 90 ms of sustained above-threshold speech at an RMS threshold of 0.028 before emitting a speech-start edge. This protects the first token from device-access clicks and brief ambient transients while allowing natural conversational reading without shouting or exaggerated pacing.
 

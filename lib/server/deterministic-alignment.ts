@@ -6,7 +6,7 @@ export function buildDeterministicAlignment(input: AlignmentRequest): AlignmentR
   const elapsedSeconds = Math.max(input.elapsedMs / 1_000, 1);
   const tokens: TokenAlignment[] = words.map((token, index) => {
     const normalised = token.toLowerCase().replace(/[^a-z']/g, "");
-    if (normalised === "knight" && input.demoAttempt === "sounded-silent-k") {
+    if (normalised === "knight" && input.demoAttempt === "sounded-silent-k" && input.evaluationMode !== "standard-rp") {
       return {
         id: `${input.sessionId}-${index}`,
         token,
