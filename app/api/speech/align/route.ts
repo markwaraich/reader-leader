@@ -1,87 +1,69 @@
-/* Reference-led rule: live diagnostics may enrich one target token, while deterministic fixtures keep the judging loop available on every provider failure. */
+/* Stage 4 contract: validate bounded client telemetry, adjudicate once with Gemini, then enforce deterministic policy and scoring. */
 import { NextResponse } from "next/server";
-import { z } from "zod";
-import type { AlignmentRequest } from "@/lib/domain";
-import { buildDeterministicAlignment } from "@/lib/server/deterministic-alignment";
-import { evaluateAudioWithGemini } from "@/lib/server/gemini-audio-diagnostic";
-import { applyGeminiDiagnosticToAlignment } from "@/lib/server/gemini-alignment-mapper";
+import { getStory } from "@/lib/seed";
+import { evaluateRunningRecordWithGemini } from "@/lib/server/gemini-running-record";
+import { buildClientFallbackRecord, reconcileGeminiRunningRecord } from "@/lib/server/running-record-policy";
+import { finalizeRunningRecordRequestSchema } from "@/lib/server/running-record-schema";
 
-const MAX_BASE64_AUDIO_LENGTH = 2_000_000;
-const alignmentSourceHeaders = (source: "gemini" | "deterministic") => ({
-  "X-Reader-Leader-Alignment-Source": source,
-});
+const GEMINI_TIMEOUT_MS = 20_000;
 
-const requestSchema = z.object({
-  sessionId: z.string().min(1),
-  storyId: z.enum(["fat-cat", "big-dog", "sun-bun", "pig-in-mud", "red-hen", "frog-log", "bears-hat", "ship-trip", "fox-box", "brave-knight", "lost-shield", "kings-ring"]),
-  targetText: z.string().min(1),
-  localeProfile: z.enum(["en-GB", "en-IE"]),
-  evaluationMode: z.enum(["standard-rp", "regional-restraint"]),
-  elapsedMs: z.number().nonnegative(),
-  isFinal: z.boolean(),
-  currentTokenIndex: z.number().int().nonnegative().optional(),
-  audioBytes: z.number().int().nonnegative().optional(),
-  targetToken: z.enum(["knight", "horse"]).optional(),
-  audioBase64: z.string().min(4).max(MAX_BASE64_AUDIO_LENGTH).optional(),
-  audioMimeType: z.literal("audio/wav").optional(),
-  audioEvidence: z.array(z.object({
-    targetToken: z.enum(["knight", "horse"]),
-    audioBase64: z.string().min(4).max(MAX_BASE64_AUDIO_LENGTH),
-    audioMimeType: z.literal("audio/wav"),
-    audioBytes: z.number().int().nonnegative(),
-  })).max(2).optional(),
-  demoAttempt: z.enum(["standard", "sounded-silent-k"]).optional(),
-});
+function sourceHeaders(source: "gemini" | "client-fallback") {
+  return { "X-Reader-Leader-Alignment-Source": source };
+}
 
 function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message.slice(0, 240) : "Unknown Gemini provider error";
 }
 
-export async function POST(request: Request) {
-  const parsed = requestSchema.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "INVALID_ALIGNMENT_REQUEST", issues: z.treeifyError(parsed.error) }, { status: 400 });
+async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Gemini running-record request timed out.")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
-  const input: AlignmentRequest = parsed.data;
-  const fallback = buildDeterministicAlignment(input);
+export async function POST(request: Request) {
+  const parsed = finalizeRunningRecordRequestSchema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success) {
+    return NextResponse.json({ error: "INVALID_ALIGNMENT_REQUEST", issues: parsed.error.flatten() }, { status: 400 });
+  }
+
+  const input = parsed.data;
+  if (
+    input.telemetry.sessionId !== input.sessionId
+    || input.telemetry.storyId !== input.storyId
+    || input.telemetry.localeProfile !== input.localeProfile
+    || input.telemetry.evaluationMode !== input.evaluationMode
+  ) {
+    return NextResponse.json({ error: "INCONSISTENT_SESSION_TELEMETRY" }, { status: 400 });
+  }
+
+  const canonicalTargetText = getStory(input.storyId).targetText;
+  const fallback = (warning: string) => buildClientFallbackRecord(input, canonicalTargetText, warning);
   const apiKey = process.env.GEMINI_API_KEY;
-  const evidence = parsed.data.audioEvidence?.length
-    ? parsed.data.audioEvidence
-    : input.targetToken && input.audioBase64 && input.audioMimeType === "audio/wav"
-      ? [{ targetToken: input.targetToken, audioBase64: input.audioBase64, audioMimeType: input.audioMimeType, audioBytes: input.audioBytes ?? 0 }]
-      : [];
-  if (!apiKey || evidence.length === 0) {
-    return NextResponse.json(fallback, { headers: alignmentSourceHeaders("deterministic") });
+  if (!apiKey) {
+    return NextResponse.json(fallback("Gemini is not configured; this record uses validated client alignment."), {
+      headers: sourceHeaders("client-fallback"),
+    });
   }
 
   const model = process.env.GEMINI_MODEL || "gemini-3.6-flash";
-  const accentProfile = input.localeProfile === "en-IE" && input.evaluationMode === "regional-restraint"
-    ? "Hiberno-English / Northern Irish"
-    : "Standard Received Pronunciation";
-
-  let alignment = fallback;
-  let liveDiagnostics = 0;
-  for (const clip of evidence) {
-    try {
-      const diagnostic = await evaluateAudioWithGemini({
-        apiKey,
-        model,
-        audioBase64: clip.audioBase64,
-        audioMimeType: clip.audioMimeType,
-        targetToken: clip.targetToken,
-        accentProfile,
-      });
-      alignment = applyGeminiDiagnosticToAlignment(alignment, diagnostic, clip.targetToken);
-      liveDiagnostics += 1;
-    } catch (error) {
-      console.error("[GeminiAlignmentFallback]", {
-        sessionId: input.sessionId,
-        targetToken: clip.targetToken,
-        model,
-        error: safeErrorMessage(error),
-      });
-    }
+  try {
+    const record = await withTimeout(evaluateRunningRecordWithGemini({ apiKey, model, request: input, canonicalTargetText }), GEMINI_TIMEOUT_MS);
+    const alignment = reconcileGeminiRunningRecord(input, canonicalTargetText, record);
+    return NextResponse.json(alignment, { headers: sourceHeaders("gemini") });
+  } catch (error) {
+    const reason = safeErrorMessage(error);
+    console.error("[GeminiRunningRecordFallback]", { sessionId: input.sessionId, model, error: reason });
+    return NextResponse.json(fallback(`Gemini adjudication was unavailable; validated client alignment was retained. ${reason}`), {
+      headers: sourceHeaders("client-fallback"),
+    });
   }
-  return NextResponse.json(alignment, {
-    headers: alignmentSourceHeaders(liveDiagnostics > 0 ? "gemini" : "deterministic"),
-  });
 }

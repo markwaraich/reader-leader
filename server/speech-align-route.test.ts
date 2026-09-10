@@ -1,36 +1,78 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { alignTranscript } from "@/lib/read-aloud/alignment-engine";
+import { calculateStage4Metrics } from "@/lib/read-aloud/scoring";
+import { getStory } from "@/lib/seed";
 
-const { evaluateAudioWithGemini } = vi.hoisted(() => ({
-  evaluateAudioWithGemini: vi.fn(),
-}));
-
-vi.mock("@/lib/server/gemini-audio-diagnostic", () => ({
-  evaluateAudioWithGemini,
-}));
+const { evaluateRunningRecordWithGemini } = vi.hoisted(() => ({ evaluateRunningRecordWithGemini: vi.fn() }));
+vi.mock("@/lib/server/gemini-running-record", () => ({ evaluateRunningRecordWithGemini }));
 
 import { POST } from "@/app/api/speech/align/route";
 
-const requestBody = {
-  sessionId: "session-route-fallback",
-  storyId: "brave-knight",
-  targetText: "The brave knight went out into the cold night to find his lost horse.",
+const story = getStory("fat-cat");
+const aligned = alignTranscript({
+  sessionId: "stage4-route",
+  targetText: story.targetText,
+  transcript: "the big cat sat on the mat",
   localeProfile: "en-IE",
   evaluationMode: "regional-restraint",
-  elapsedMs: 20_000,
-  isFinal: true,
-  currentTokenIndex: 13,
-  audioBytes: 44,
-  targetToken: "knight",
-  audioBase64: "UklGRgAAAAAXQVZF",
-  audioMimeType: "audio/wav",
-  demoAttempt: "sounded-silent-k",
+  finalize: true,
+});
+const telemetry = {
+  version: 1 as const,
+  sessionId: "stage4-route",
+  storyId: "fat-cat" as const,
+  targetText: story.targetText,
+  localeProfile: "en-IE" as const,
+  evaluationMode: "regional-restraint" as const,
+  status: "complete" as const,
+  elapsedMs: 30_000,
+  currentTokenIndex: aligned.currentTokenIndex,
+  recognitionSupport: "available" as const,
+  interimTranscript: "",
+  finalTranscript: "the big cat sat on the mat",
+  observations: [],
+  events: [{ id: "nudge-1", type: "visual-nudge" as const, atMs: 3_000, tokenIndex: 2, detail: "nudge only" }],
+  tokens: aligned.tokens,
+  metrics: calculateStage4Metrics(aligned.tokens, 30_000),
 };
+const requestBody = {
+  version: 1 as const,
+  sessionId: telemetry.sessionId,
+  storyId: telemetry.storyId,
+  localeProfile: telemetry.localeProfile,
+  evaluationMode: telemetry.evaluationMode,
+  elapsedMs: telemetry.elapsedMs,
+  telemetry,
+};
+
+function request(body: unknown) {
+  return new Request("http://localhost/api/speech/align", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function geminiTokens() {
+  return story.targetText.split(/\s+/).map((token, index) => ({
+    index,
+    token,
+    status: "correct" as const,
+    errorType: "none" as const,
+    heardAs: token.toLowerCase().replace(/[^a-z']/g, ""),
+    phoneticDisplay: "",
+    confidence: 0.95,
+    explanation: "Matched the final recognition evidence.",
+    cueRecommendation: "",
+    falseCorrection: false,
+  }));
+}
 
 describe("POST /api/speech/align", () => {
   beforeEach(() => {
     vi.stubEnv("GEMINI_API_KEY", "test-key");
     vi.stubEnv("GEMINI_MODEL", "gemini-3.6-flash");
-    evaluateAudioWithGemini.mockReset();
+    evaluateRunningRecordWithGemini.mockReset();
   });
 
   afterEach(() => {
@@ -38,66 +80,50 @@ describe("POST /api/speech/align", () => {
     vi.restoreAllMocks();
   });
 
-  it("keeps fluent Standard RP knight correct while evaluating horse independently", async () => {
-    evaluateAudioWithGemini
-      .mockResolvedValueOnce({
-        targetToken: "knight",
-        spokenPhonemes: "/n-aɪ-t/",
-        status: "fluent",
-        errorType: "none",
-        restraintApplied: false,
-        diagnosticReasoning: "The initial k was silent.",
-      })
-      .mockResolvedValueOnce({
-        targetToken: "horse",
-        spokenPhonemes: "/haʊs/",
-        status: "misread",
-        errorType: "substitution",
-        restraintApplied: false,
-        diagnosticReasoning: "The target was replaced with house.",
-      });
-
-    const response = await POST(new Request("http://localhost/api/speech/align", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        ...requestBody,
-        localeProfile: "en-GB",
-        evaluationMode: "standard-rp",
-        audioEvidence: [
-          { targetToken: "knight", audioBase64: "UklGRgAAAAAXQVZF", audioMimeType: "audio/wav", audioBytes: 44 },
-          { targetToken: "horse", audioBase64: "UklGRgAAAAAXQVZF", audioMimeType: "audio/wav", audioBytes: 44 },
-        ],
-      }),
-    }));
+  it("returns a policy-checked Gemini record with deterministic scores", async () => {
+    evaluateRunningRecordWithGemini.mockResolvedValue({ tokens: geminiTokens(), summary: "Fluent reading." });
+    const response = await POST(request(requestBody));
     const body = await response.json();
-
+    expect(response.status).toBe(200);
     expect(response.headers.get("X-Reader-Leader-Alignment-Source")).toBe("gemini");
-    expect(evaluateAudioWithGemini).toHaveBeenCalledTimes(2);
-    expect(body.tokens.find((token: { token: string }) => token.token === "knight")).toMatchObject({ status: "correct", scoreImpact: false, phoneticDisplay: "/n-aɪ-t/" });
-    expect(body.tokens.find((token: { token: string }) => token.token.startsWith("horse"))).toMatchObject({ status: "substitution", scoreImpact: true, phoneticDisplay: "/haʊs/" });
+    expect(evaluateRunningRecordWithGemini).toHaveBeenCalledOnce();
+    expect(body).toMatchObject({ source: "gemini", metrics: { accuracyRate: 100, correctWords: 7, substitutions: 0, omissions: 0 } });
   });
 
-  it("returns deterministic HTTP 200 output when Gemini fails", async () => {
-    evaluateAudioWithGemini.mockRejectedValueOnce(new Error("provider unavailable"));
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    const response = await POST(new Request("http://localhost/api/speech/align", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(requestBody),
-    }));
+  it("does not turn a silence nudge into an unsupported omission", async () => {
+    const tokens = geminiTokens();
+    tokens[2] = { ...tokens[2], status: "omission", errorType: "omission", heardAs: "", explanation: "The child paused." };
+    evaluateRunningRecordWithGemini.mockResolvedValue({ tokens, summary: "Pause detected." });
+    const response = await POST(request(requestBody));
     const body = await response.json();
+    expect(body.tokens[2]).toMatchObject({ status: "correct", scoreImpact: false });
+    expect(body.metrics.accuracyRate).toBe(100);
+  });
 
+  it("returns validated client alignment when Gemini output violates canonical order", async () => {
+    evaluateRunningRecordWithGemini.mockResolvedValue({ tokens: geminiTokens().slice(0, -1), summary: "Incomplete." });
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const response = await POST(request(requestBody));
+    const body = await response.json();
     expect(response.status).toBe(200);
-    expect(response.headers.get("X-Reader-Leader-Alignment-Source")).toBe("deterministic");
-    expect(evaluateAudioWithGemini).toHaveBeenCalledOnce();
-    expect(body.tokens[2]).toMatchObject({
-      token: "knight",
-      status: "review",
-      phoneticDisplay: "/k-n-aɪ-t/",
-      scoreImpact: true,
-    });
-    expect(body.metrics.accuracyRate).toBe(93);
+    expect(response.headers.get("X-Reader-Leader-Alignment-Source")).toBe("client-fallback");
+    expect(body).toMatchObject({ source: "client-fallback", metrics: { accuracyRate: 100 } });
+    expect(body.warning).toContain("validated client alignment");
+  });
+
+  it("returns client fallback when the API key is absent", async () => {
+    vi.stubEnv("GEMINI_API_KEY", "");
+    const response = await POST(request(requestBody));
+    const body = await response.json();
+    expect(response.headers.get("X-Reader-Leader-Alignment-Source")).toBe("client-fallback");
+    expect(evaluateRunningRecordWithGemini).not.toHaveBeenCalled();
+    expect(body.warning).toContain("not configured");
+  });
+
+  it("rejects inconsistent and oversized telemetry", async () => {
+    const inconsistent = await POST(request({ ...requestBody, storyId: "big-dog" }));
+    expect(inconsistent.status).toBe(400);
+    const oversized = await POST(request({ ...requestBody, telemetry: { ...telemetry, finalTranscript: "x".repeat(20_001) } }));
+    expect(oversized.status).toBe(400);
   });
 });

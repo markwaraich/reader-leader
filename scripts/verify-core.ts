@@ -17,8 +17,8 @@ import { createAttemptSnippetWindow } from "../lib/audio-data.ts";
 import { calculateReadingMetrics } from "../lib/reading-metrics.ts";
 import type { AlignmentStatus, TokenAlignment } from "../lib/domain.ts";
 
-assert.equal(HESITATION_THRESHOLD_MS, 2_000);
-assert.equal(PROMPT_THRESHOLD_MS, 3_800);
+assert.equal(HESITATION_THRESHOLD_MS, 3_000);
+assert.equal(PROMPT_THRESHOLD_MS, 5_000);
 assert.equal(BASELINE_ASR_PATIENCE_MS, 800);
 assert.equal(HIBERNO_AUTO_FINISH_MS, 1_200);
 assert.equal(BASELINE_AUTO_FINISH_MS, 2_400);
@@ -50,7 +50,7 @@ assert.equal(shouldShowBaselineInterrupt("standard-rp", "horse.", true, BASELINE
 assert.equal(shouldShowBaselineInterrupt("standard-rp", "horse.", true, BASELINE_ASR_PATIENCE_MS), true);
 assert.equal(shouldShowBaselineInterrupt("regional-restraint", "horse.", true, BASELINE_ASR_PATIENCE_MS), false);
 
-const statuses: AlignmentStatus[] = ["correct", "substitution", "confirmed-phonics-error", "accepted-teacher-override"];
+const statuses: AlignmentStatus[] = ["correct", "substitution", "self-corrected", "accepted-teacher-override"];
 assert.notEqual(statuses[2], "accepted-regional-variant");
 const tokens: TokenAlignment[] = statuses.map((status, index) => ({
   id: `token-${index}`,
@@ -58,13 +58,15 @@ const tokens: TokenAlignment[] = statuses.map((status, index) => ({
   index,
   status,
   confidence: 0.9,
-  scoreImpact: status === "substitution" || status === "confirmed-phonics-error",
+  scoreImpact: status === "substitution",
   falseCorrection: status === "substitution",
 }));
 const metrics = calculateReadingMetrics(tokens, 60);
-assert.equal(metrics.accuracyRate, 50);
-assert.equal(metrics.wcpm, 2);
+assert.equal(metrics.accuracyRate, 75);
+assert.equal(metrics.wcpm, 3);
 assert.equal(metrics.falseCorrectionRate, 25);
+assert.equal(metrics.substitutions, 1);
+assert.equal(metrics.selfCorrections, 1);
 
 const provisionalKnightTokens: TokenAlignment[] = Array.from({ length: 14 }, (_, index) => ({
   id: `story-token-${index}`,

@@ -1,99 +1,52 @@
-# Reader Leader Route-Wiring Fix
+# Reader Leader Stage 4 Harness
 
-- [x] Confirm `app/page.tsx` mounts `StoryLibrary` and each story card calls the existing `selectStory` action before navigation.
-- [x] Confirm `app/read/page.tsx` mounts the existing `ReadingExperience` without retaining static Phase 1 controls.
-- [x] Confirm `app/dashboard/student/page.tsx` mounts the existing hydrated running-record view and existing two-step override flow.
-- [x] Apply only minimal corrections required by the active files; do not duplicate helper logic.
-- [x] Verify Fat Cat and Brave Knight snapshots, microphone permission and hesitation timers, align-and-celebrate navigation, flagged `knight` evidence, and `accepted-teacher-override` audit persistence.
-- [x] Run lint, strict TypeScript, the focused core checks, production build, and live browser flow.
+## Phase 0 — Contracts and migration
 
-## Production Preview
+- [x] Create `feat/stage-4-harness` from the source commit corresponding to checkpoint `691f7c79`.
+- [x] Add versioned recognition, telemetry, scoring, and finalization contracts.
+- [x] Add v2/v1 to v3 local-storage migration.
 
-- [x] Confirm the story-card and microphone buttons retain their existing client `onClick` handlers.
-- [x] Configure the managed preview command to run the compiled Next.js server without development HMR.
-- [x] Build the production application and restart port 3000 under the production command.
-- [x] Verify HTTP response, absence of `/_next/hmr`, React hydration, story navigation, and the microphone permission path on the preview URL.
+## Phase 1 — Audio and VAD
 
-## Phase 4 Demo Features
+- [x] Add adaptive noise-floor calibration and RMS hysteresis.
+- [x] Emit one visual nudge per silence episode at 3 seconds.
+- [x] Emit one intervention per silence episode at 5 seconds.
+- [x] Keep silence support separate from lexical error scoring.
 
-- [x] Extend typed session/alignment state for evaluation mode, false-correction rate, and a bounded attempt-audio data URI.
-- [x] Advance the active token from VAD speech events and keep the 3s/5s FSM support bound to that token.
-- [x] Automatically finish after the final token is spoken and paused, while retaining manual next/finish behavior.
-- [x] Capture and persist a real two-second `knight` attempt segment and play it through a clean HTML5 Audio element.
-- [x] Revoke temporary object URLs and release all audio graph resources on finish, reset, and unmount.
-- [x] Add the Standard RP versus Hiberno-English/Northern Irish evaluation toggle and distinct alignment outcomes.
-- [x] Verify strict TypeScript, focused assertions, production build, HTTP 200, hydration, and both evaluation paths.
+## Phase 2 — Recognition and alignment
 
-## Green Band Completion and Session Isolation
+- [x] Add robust Web Speech handling with automatic `onend` restart while reading remains active.
+- [x] Add cumulative-final transcript normalization.
+- [x] Add deterministic alignment with a maximum four-token lookahead.
+- [x] Add substitution, omission, and self-correction tracking.
+- [x] Add tested Hiberno-English / Northern Irish rhotic and dental-stop fixtures.
 
-- [x] Add The Lost Shield and King’s Ring to the typed Level 5 catalogue without changing The Brave Knight contract.
-- [x] Render three consistent, interactive Green Band cards with friendly inline vector artwork.
-- [x] Reset the active token and hesitation lifecycle to index 0 on `/read` mount, microphone start, and Read Again.
-- [x] Ensure non-hero stories render neutral 100% records with story-appropriate assessment history.
-- [x] Show the teacher-override success banner only when the active session has its own confirmed override.
-- [x] Regression-test Brave Knight alignment, `knight` popover, retained audio playback, and two-click override.
-- [x] Run strict checks, a clean production build, HTTP 200 verification, and restart `0.0.0.0:3000`.
+## Phase 3 — Telemetry and scoring
 
-## Reading Counter Start Gate
+- [x] Add bounded Zustand session telemetry.
+- [x] Add deterministic WCPM, accuracy, substitution, omission, self-correction, and intervention metrics.
+- [x] Keep browser resources and audio blobs outside the store.
 
-- [x] Confirm the current `/read` mount and microphone-start reset paths still force token index 0.
-- [x] Ignore all VAD energy during the first 300 ms after microphone activation.
-- [x] Require genuine sustained speech energy before emitting a speech-start edge or advancing the active token.
-- [x] Preserve the Brave Knight alignment, two-second snippet, two-click override, and clean Reading Canvas UI.
-- [x] Run focused assertions, the production Chromium regression, a clean build, HTTP 200, and restart `0.0.0.0:3000`.
+## Phase 4 — Gemini finalization
 
-## Natural Reading VAD Calibration
+- [x] Replace target-word diagnostics with one full-session finalization request.
+- [x] Add structured Gemini output schema and prompt-injection boundary.
+- [x] Enforce canonical token order, accent restraint, self-correction preservation, and server-side arithmetic.
+- [x] Return validated client alignment on missing credentials, timeout, malformed output, or policy failure.
 
-- [x] Keep the existing 300 ms microphone startup-noise gate unchanged.
-- [x] Reduce the active RMS threshold by approximately 20% and shorten sustained-speech qualification to 90 ms.
-- [x] Confirm startup noise still cannot advance token 0 and natural-paced speech still completes the Brave Knight regression.
-- [x] Run strict checks, a clean production build, HTTP 200 verification, and restart `0.0.0.0:3000`.
+## Phase 5 — Product integration
 
-## Evidence Pre-Roll and Baseline Patience
+- [x] Drive live word progression from final recognition observations rather than VAD bursts.
+- [x] Add live recognition, nudge, intervention, and metrics UI.
+- [x] Show model/client source, fallback warnings, and Stage 4 counters in the running record.
+- [x] Preserve bounded token audio evidence and teacher audit actions.
 
-- [x] Capture the `knight` evidence window from 400 ms before token start through 1,600 ms after token start.
-- [x] Keep the persisted attempt duration at exactly two seconds and preserve playback/cleanup behavior.
-- [x] Delay the Baseline RP `horse` substitution interrupt until 1.8 seconds of completion patience.
-- [x] Preserve the story grid, UI shells, regional 0.0% outcome, and two-click teacher override.
-- [x] Run strict checks, timing regression assertions, a clean production build, HTTP 200, and restart `0.0.0.0:3000`.
+## Release gates
 
-## Stage Demo Timing Thresholds
-
-- [x] Set hesitation amber feedback to 2,000 ms and the phonetic prompt to 3,800 ms.
-- [x] Set Baseline RP patience to 800 ms and final-token auto-finish hold to 2,400 ms.
-- [x] Update focused timing assertions and preserve all unrelated audio, alignment, and educator behavior.
-- [x] Run strict checks, a clean production build, HTTP 200 verification, and restart `0.0.0.0:3000`.
-
-## Final-Token Dialect Restraint Timing
-
-- [x] Add evaluation-specific final-token delays: 1,200 ms regional and 2,400 ms Baseline RP.
-- [x] Suppress general hesitation amber/prompt feedback on the final regional `horse` token.
-- [x] Preserve the Baseline RP 800 ms anomaly reveal and keep it visible before celebration.
-- [x] Update focused and browser regressions for the decoupled final-token paths.
-- [x] Run `pnpm test`, strict checks, a clean production build, HTTP 200, and restart `0.0.0.0:3000`.
-
-## Deployment Artifact Repair
-
-- [x] Confirm whether the current project is still configured as static hosting while the app requires a Next.js server runtime.
-- [x] Identify why the deployment pipeline expects `/dist` while `pnpm build` emits `.next`.
-- [x] Apply the smallest deployment-compatible hosting or build correction without removing `/api/speech/align`.
-- [x] Run `pnpm test`, a deployment-compatible production build, and local HTTP verification.
-- [x] Save a deployment-ready checkpoint for publishing from the Management UI.
-
-## Deployment CDN Artifact Repair
-
-- [x] Create a non-empty `dist/public` tree required by the server-capable deployment image’s CDN upload step.
-- [x] Mirror Next.js `/_next/static` files into `dist/public/_next/static` while retaining them inside the standalone runtime.
-- [x] Verify the exact `dist/public/*` glob used by Cloud Build has matches.
-- [x] Run tests, strict checks, a clean build, and the packaged runtime HTTP/API checks.
-- [x] Save a corrected deployment checkpoint for publishing.
-
-## Live Gemini Audio Alignment
-
-- [x] Configure ignored local Gemini credentials and a configurable `gemini-2.5-flash` default without exposing secrets.
-- [x] Install `@google/genai` and add a server-only structured audio-diagnostic adapter.
-- [x] Reuse the existing two-second WAV snippet at the current alignment boundary without altering its capture mechanism.
-- [x] Map validated Gemini diagnostics into the existing Running Record token contract.
-- [x] Preserve deterministic HTTP-200 fallbacks for missing credentials and every provider failure.
-- [x] Verify strict types, tests, live/fallback API behavior, standalone packaging, and production HTTP 200 on port 3000.
-- [x] Save a verified Gemini integration checkpoint.
+- [x] Lint and strict TypeScript.
+- [x] Unit, policy, storage, hook, and core assertions.
+- [x] Production Chromium Stage 4 journey.
+- [x] Final production build.
+- [x] Managed sandbox synchronization and restart on `0.0.0.0:3000`.
+- [x] HTTP 200, managed browser, and live Gemini smoke checks.
+- [x] Managed checkpoint and feature-branch push.

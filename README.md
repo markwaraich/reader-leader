@@ -1,59 +1,76 @@
 # Reader Leader
 
-Reader Leader is a Next.js App Router walking skeleton for a UK and Hiberno-English early-reading fluency tutor. It implements the single-path student and educator loop: story selection, memory-safe live listening, VAD-driven word progression, timed hesitation support, celebration, a generated running record with real attempt playback, and an auditable two-click teacher override.
+Reader Leader is a Next.js App Router test harness for UK and Hiberno-English early-reading fluency assessment. It implements the full student-to-educator loop: story selection, live microphone analysis, recognition-driven word progression, timed literacy support, deterministic scoring, one-shot Gemini adjudication, celebration, and an auditable running record.
 
-The story library includes a complete three-card Level 5 Green Band: The Brave Knight, The Lost Shield, and King’s Ring. Every fresh read attempt starts at token index zero, including direct `/read` entry, microphone start, story changes, and Read Again. Educator history and override success messaging are scoped to the displayed session, so introductory stories remain neutral and do not inherit Brave Knight evidence.
+## Stage 4 Architecture
 
-## Foundation Stack
-
-| Area | Choice |
+| Layer | Implementation |
 |---|---|
-| Application | Next.js 16 App Router with React 19 |
-| Language | TypeScript in strict mode |
-| Styling | Tailwind CSS 4 with project-specific CSS tokens |
-| Validation | Zod at the `/api/speech/align` boundary |
-| State | Versioned typed React context persisted to `localStorage` with safe seed fallback |
-| Audio | Web Audio `AnalyserNode` VAD plus `MediaRecorder`, with explicit teardown on finish and unmount |
-| Comparison | Standard RP baseline-ASR simulation versus Hiberno-English/Northern Irish agent restraint |
-| Icons | Lucide React plus the Reader Leader star-and-sound mark |
+| Audio and VAD | Web Audio `AnalyserNode`, adaptive noise-floor calibration, RMS hysteresis, `MediaRecorder`, and idempotent teardown |
+| Support timing | A visual nudge at exactly 3 seconds of silence and an intervention at exactly 5 seconds; neither event creates a reading error |
+| Recognition | Chrome-first Web Speech wrapper with interim results, final observations, robust error handling, and automatic `onend` restart while reading remains active |
+| Alignment | Deterministic client sequence alignment with a maximum four-token lookahead to contain skipped-line errors |
+| Accent restraint | Versioned Hiberno-English / Northern Irish allow-list for tested rhotic and dental-stop lexical/phoneme fixtures |
+| Telemetry | Bounded Zustand store containing final observations, VAD events, token states, WCPM, accuracy, substitutions, omissions, and self-corrections |
+| Final adjudication | One `POST /api/speech/align` request after completion; Gemini Flash returns schema-constrained token classifications |
+| Trust boundary | Zod validates input/output, server policy preserves canonical story order and accent rules, and all scores are recomputed deterministically |
+| Persistence | Versioned local-storage envelope (`reader-leader-session-v3`) with migration from v2 and v1 |
+
+## Assessment Rules
+
+The audio layer decides only whether speech or silence is present. It never decides whether a word is correct. Only final speech-recognition observations progress the lexical tracker. Interim hypotheses are display-only.
+
+The alignment engine compares cumulative final recognition text with canonical story tokens. Exact matches and allow-listed regional variants are preferred, then substitutions, insertions, and omissions. Lookahead is capped at four target or observed tokens so a skipped line cannot cascade through the rest of the record. A wrong attempt followed by the target before the next token is committed becomes `self-corrected` and carries no accuracy penalty.
+
+Accuracy and WCPM are deterministic. Unresolved substitutions and omissions reduce accuracy. Self-corrections and accepted regional variants do not. Silence nudges and interventions are counted as support telemetry, not mistakes.
+
+## Accent-Invariance Contract
+
+Regional restraint is a narrow allow-list, not general fuzzy matching. The initial tested fixtures include:
+
+- Rhotic `horse`, including `/hɔɹs/`, `/hɔːɹs/`, `/hɔrs/`, and `/hɔːrs/`.
+- Dental-stop `[t]` realizations such as `three → tree`, `thing → ting`, and `think → tink`.
+- Dental-stop `[d]` realizations such as `this → dis`, `that → dat`, and `them → dem`.
+
+The same observation remains score-impacting in Standard RP comparison mode unless it is otherwise an exact match. New variants require a fixture and regression test.
+
+## Gemini Finalization
+
+`POST /api/speech/align` accepts a versioned, bounded telemetry payload and optional short WAV evidence. The route loads canonical story text by `storyId`, invokes the server-only Google Gen AI SDK once, validates structured JSON, rejects canonical-token changes, re-applies accent and self-correction policy, and overwrites model-generated arithmetic with deterministic metrics.
+
+If credentials are absent, the provider times out, or output fails schema or policy validation, the route returns HTTP 200 with `source: "client-fallback"`, a visible warning, and the validated client alignment. It never replaces failed adjudication with a fabricated perfect record.
+
+Configure `GEMINI_API_KEY` and optional `GEMINI_MODEL` as server-only secrets. The default model is `gemini-3.6-flash`. Never place either value in a browser-prefixed variable.
+
+## Browser Support and Privacy
+
+Live lexical tracking depends on `SpeechRecognition`, which is not available consistently across all browsers. Reader Leader is therefore Chrome/Chromium-first. Unsupported browsers retain microphone/VAD support and manual navigation but display an explicit degraded-mode message; the application does not invent lexical judgments.
+
+Some browsers use a remote recognition service for Web Speech. Deployments should disclose this to schools and guardians. Reader Leader does not persist raw session audio. Only optional bounded two-second evidence clips are retained locally for educator playback and final adjudication.
 
 ## Routes
 
 | Route | Purpose |
 |---|---|
 | `/` | Story-band selection library |
-| `/read` | Dynamic reading canvas with microphone capture and 2.0s/3.8s stage-demo hesitation support |
+| `/read` | Stage 4 live read-aloud canvas |
 | `/celebrate` | Student celebration and educator-record handoff |
 | `/dashboard` | Class metrics and phonetic-gap overview |
-| `/dashboard/student` | Latest/seeded running record with two-click teacher override and audit state |
-| `POST /api/speech/align` | Typed Gemini audio diagnostic with deterministic fallback |
+| `/dashboard/student` | Completed or seeded running record with evidence and audit actions |
+| `POST /api/speech/align` | Full-session Gemini adjudication with validated client fallback |
 
-## Run Locally
+## Run and Verify
 
-Install dependencies with `pnpm install`, create the compiled bundle with `pnpm build`, then run the production preview with `pnpm dev` or `pnpm start` and open `http://localhost:3000`. The managed preview intentionally maps `pnpm dev` to `next start`, avoiding development HMR WebSockets across container proxies. Run `pnpm check` for lint and strict TypeScript validation, `pnpm test` for unit, FSM, and Chromium regressions, and `pnpm verify:gemini-live` for an opt-in live-provider endpoint smoke check.
+```bash
+pnpm install
+pnpm check
+pnpm test
+pnpm build
+pnpm start
+```
 
-## Gemini Audio Diagnostics
-
-Independent two-second WAV evidence clips for `knight` and final-token `horse` are serialized at the alignment client boundary and sent once, after the read finishes. The server-only Google Gen AI adapter validates structured JSON, enforces Reader Leader’s rhotic `horse` and silent-`k` policies, and maps each result into its matching Running Record token. The provider model is selected with `GEMINI_MODEL` and defaults to the currently supported `gemini-3.6-flash`. Missing credentials, quota errors, unavailable models, malformed output, and network failures return the complete deterministic Running Record with HTTP 200; Standard RP never inherits the demonstration silent-`k` error without diagnostic evidence.
-
-`GEMINI_API_KEY` and `GEMINI_MODEL` must be configured as managed server secrets for production. `.env.local` is ignored and is only for local development. Never place either value in browser-prefixed variables.
-
-## Phonics Restraint Contract
-
-The alignment mock treats **“knight” pronounced as `/n-aɪ-t/` as correct**, applies no cue, and records a 0% penalty. When a child sounds the silent letter as `/k-n-aɪ-t/`, the word is a score-impacting provisional phonics error and the 14-word record begins at 93% accuracy. An educator can confirm the error as `confirmed-phonics-error`, preserving 93%, or record `accepted-teacher-override` when the AI misheard a fluent attempt, restoring 100%. Both remain distinct from automated `accepted-regional-variant` restraint in the audit log.
-
-## Audio Lifecycle
-
-The microphone hook owns its complete resource graph. Starting creates one stream, source, analyser, animation-frame loop, optional session recorder, bounded token-evidence windows, and audio context. Finishing, cancellation, errors, and component unmount stop every media track, cancel the frame loop, disconnect source and analyser nodes, stop active recorders, and close the `AudioContext` idempotently. The retained `knight` and `horse` segments are encoded as local audio data URIs; educator playback resolves the selected token’s clip through a temporary object URL that is revoked on completion, session reset/change, or unmount.
-
-The analyser ignores all startup energy for 300 ms after microphone activation and then requires 90 ms of sustained above-threshold speech at an RMS threshold of 0.028 before emitting a speech-start edge. This protects the first token from device-access clicks and brief ambient transients while allowing natural conversational reading without shouting or exaggerated pacing.
-
-The `knight` evidence clip is decoded from the complete session recording using the detected token onset: 400 ms of pre-roll plus 1,600 ms after onset, yielding an exact two-second WAV for reliable educator playback. Final-token completion is mode-specific: regional restraint clears pending hesitation feedback, keeps `horse` neutral, and finishes after 1,200 ms; Standard RP reveals the simulated anomaly after 800 ms and finishes after 2,400 ms, keeping the comparison visible for about 1.6 seconds. The regional 0.0% false-correction outcome is unchanged.
-
-## Phase 4 Pitch Demonstration
-
-Live VAD utterance edges advance the active token. A two-second pause highlights that token in amber, and a 3.8-second pause reveals its phonetic scaffold without score impact. The regional mode accepts rhotic `horse` as `accepted-regional-variant`, stays silent, and reports a 0.0% false-correction rate. Standard RP comparison mode deliberately simulates a baseline substitution and amber interruption, yielding a measurable false-correction rate for the same reading.
+The production server binds `0.0.0.0:3000`. `pnpm test` runs Vitest policy/unit tests, standalone core assertions, a production Next.js test build, and the Chromium read-aloud journey. `pnpm verify:gemini-live` is an opt-in live-provider smoke test and requires the server to be running with a valid Gemini secret.
 
 ## Deployment
 
-Reader Leader requires a server runtime because it includes Next.js App Router handlers such as `POST /api/speech/align`. The project is configured with server capability rather than static S3-only hosting. `pnpm build` enables Next.js standalone output and packages the runnable server, traced dependencies, and `/_next/static` assets into `dist/`; production starts through `node dist/index.js` on the configured host and port. The packager also mirrors `/_next/static` into `dist/public/_next/static`, satisfying the deployment image’s CDN upload contract while retaining the server-local copy.
+Reader Leader requires a server runtime for its Next.js API route. `pnpm build` creates the standalone Next.js bundle and packages the runnable server, traced dependencies, and static assets into `dist/`. Production starts through `node dist/index.js` using the configured host and port.

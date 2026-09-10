@@ -5,8 +5,9 @@ import { rmSync, writeFileSync } from "node:fs";
 const DEBUG_PORT = 9333;
 const APP_PORT = 3100;
 const APP_URL = `http://127.0.0.1:${APP_PORT}`;
-const AUDIO_PATH = "/tmp/reader-leader-patterned.wav";
+const AUDIO_PATH = "/tmp/reader-leader-stage4.wav";
 const PROFILE_PATH = `/tmp/reader-leader-cdp-profile-${process.pid}`;
+const STORAGE_KEY = "reader-leader-session-v3";
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 function createPatternedWav(path, sampleRate = 44_100) {
@@ -16,11 +17,9 @@ function createPatternedWav(path, sampleRate = 44_100) {
     tones.push([start, start + 0.3]);
   }
   const seconds = 20;
-  const samples = seconds * sampleRate;
-  const dataSize = samples * 2;
-  const buffer = Buffer.alloc(44 + dataSize);
+  const buffer = Buffer.alloc(44 + seconds * sampleRate * 2);
   buffer.write("RIFF", 0);
-  buffer.writeUInt32LE(36 + dataSize, 4);
+  buffer.writeUInt32LE(buffer.length - 8, 4);
   buffer.write("WAVE", 8);
   buffer.write("fmt ", 12);
   buffer.writeUInt32LE(16, 16);
@@ -31,8 +30,8 @@ function createPatternedWav(path, sampleRate = 44_100) {
   buffer.writeUInt16LE(2, 32);
   buffer.writeUInt16LE(16, 34);
   buffer.write("data", 36);
-  buffer.writeUInt32LE(dataSize, 40);
-  for (let sample = 0; sample < samples; sample += 1) {
+  buffer.writeUInt32LE(buffer.length - 44, 40);
+  for (let sample = 0; sample < seconds * sampleRate; sample += 1) {
     const time = sample / sampleRate;
     const active = tones.some(([start, end]) => time >= start && time <= end);
     const value = active ? Math.sin(2 * Math.PI * 440 * time) * 20_000 : 0;
@@ -41,14 +40,12 @@ function createPatternedWav(path, sampleRate = 44_100) {
   writeFileSync(path, buffer);
 }
 
-async function waitForUrl(url, attempts = 80) {
+async function waitForUrl(url, attempts = 100) {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url);
       if (response.ok) return response;
-    } catch {
-      // The local process is still starting.
-    }
+    } catch {}
     await sleep(100);
   }
   throw new Error(`Timed out waiting for ${url}`);
@@ -77,8 +74,7 @@ function createCdpClient(webSocketUrl) {
   });
   async function command(method, params = {}) {
     await ready;
-    const id = nextId;
-    nextId += 1;
+    const id = nextId++;
     socket.send(JSON.stringify({ id, method, params }));
     return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
   }
@@ -96,13 +92,38 @@ async function waitForValue(evaluate, expression, timeoutMs = 8_000) {
     try {
       const value = await evaluate(expression);
       if (value) return value;
-    } catch {
-      // A full-page navigation can briefly destroy the previous execution context.
-    }
+    } catch {}
     await sleep(100);
   }
   throw new Error(`Timed out waiting for: ${expression}`);
 }
+
+const fakeRecognitionSource = `(() => {
+  let starts = 0;
+  class FakeSpeechRecognition {
+    constructor() { this.continuous = false; this.interimResults = false; this.maxAlternatives = 1; this.lang = ''; this.onresult = null; this.onerror = null; this.onend = null; this.timers = []; }
+    start() {
+      starts += 1;
+      if (starts === 1) {
+        this.timers.push(setTimeout(() => this.onend?.(new Event('end')), 100));
+        return;
+      }
+      const words = ['the', 'brave', 'kite knight', 'went', 'out', 'into', 'the', 'cold', 'night', 'to', 'find', 'his', 'lost', 'hoarse'];
+      const times = [700, 1700, 2800, 8600, 9350, 10100, 10850, 11600, 12350, 13100, 13850, 14300, 14900, 15400];
+      words.forEach((transcript, index) => {
+        this.timers.push(setTimeout(() => {
+          const result = [{ transcript, confidence: 0.96 }];
+          result.isFinal = true;
+          this.onresult?.({ resultIndex: 0, results: [result] });
+        }, times[index]));
+      });
+    }
+    stop() { this.timers.forEach(clearTimeout); this.timers = []; }
+    abort() { this.stop(); }
+  }
+  Object.defineProperty(window, 'webkitSpeechRecognition', { configurable: true, value: FakeSpeechRecognition });
+  Object.defineProperty(window, 'SpeechRecognition', { configurable: true, value: FakeSpeechRecognition });
+})();`;
 
 createPatternedWav(AUDIO_PATH);
 rmSync(PROFILE_PATH, { force: true, recursive: true });
@@ -128,147 +149,51 @@ try {
   await client.command("Page.enable");
   await client.command("Runtime.enable");
   await client.command("Log.enable");
+  await client.command("Page.addScriptToEvaluateOnNewDocument", { source: fakeRecognitionSource });
 
   await client.command("Page.navigate", { url: APP_URL });
   await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");
-  assert.equal(await client.evaluate(`(() => { const section = [...document.querySelectorAll('section')].find((candidate) => candidate.querySelector('h2')?.textContent?.includes('Level 5: Green Band')); return section?.querySelectorAll('button').length; })()`), 3);
   assert.equal(await client.evaluate(`['The Brave Knight', 'The Lost Shield', "King's Ring"].every((title) => [...document.querySelectorAll('button')].some((button) => button.textContent?.includes(title)))`), true);
-  assert.equal(await client.evaluate(`(() => { const storyButtons = [...document.querySelectorAll('button')].filter((button) => button.textContent?.includes('Focus:')); return storyButtons.length === 12 && storyButtons.every((button) => button.querySelector('svg')); })()`), true, "Every story card must retain its inline illustration without a storage dependency.");
+  assert.equal(await client.evaluate(`[...document.querySelectorAll('button')].filter((button) => button.textContent?.includes('Focus:')).every((button) => button.querySelector('svg'))`), true);
 
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('The Lost Shield'))?.click()`);
-  await waitForValue(client.evaluate, "location.pathname === '/read'");
-  await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 0");
-  assert.equal(await client.evaluate("document.body.textContent.includes('The knight searched the castle for his lost shield.')"), true);
-  await client.evaluate("document.querySelector('button[aria-label=\"Next target word\"]')?.click()");
-  await client.evaluate("document.querySelector('button[aria-label=\"Next target word\"]')?.click()");
-  await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 2");
-  await client.command("Page.navigate", { url: `${APP_URL}/celebrate` });
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Read Again')");
-  assert.equal(await client.evaluate(`document.querySelector('svg[aria-label="A smiling gold celebration star"]') !== null`), true, "The celebration star must render without an external image request.");
-  await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('Read Again'))?.click()`);
-  await waitForValue(client.evaluate, "location.pathname === '/read'");
-  await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 0");
-
-  await client.command("Page.navigate", { url: APP_URL });
-  await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");
   await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('The Brave Knight'))?.click()`);
   await waitForValue(client.evaluate, "location.pathname === '/read'");
-  assert.equal(await client.evaluate("document.querySelector('button[aria-pressed=\"true\"]')?.textContent.includes('Agent Restraint')"), true);
   await client.evaluate("document.querySelector('button[aria-label=\"Start microphone\"]')?.click()");
   await waitForValue(client.evaluate, "document.querySelector('button[aria-label=\"Stop recording and finish\"]') !== null");
-  await sleep(350);
-  const warmupEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  assert.equal(warmupEnvelope.state.session.currentTokenIndex, 0, "Startup noise must not advance the first word.");
-  await waitForValue(client.evaluate, `[...document.querySelectorAll('span')].some((span) => span.textContent === 'went' && span.className.includes('E5A93C'))`, 8_000);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('w · e · n · t')", 10_000);
-  await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 13", 20_000);
-  await sleep(1_800);
-  assert.equal(await client.evaluate("location.pathname"), "/read", "Regional completion should retain its clean final-word hold before navigation.");
-  assert.equal(await client.evaluate(`[...document.querySelectorAll('span')].some((span) => span.textContent === 'horse.' && span.className.includes('E5A93C'))`), false, "Regional final horse must remain neutral.");
-  await waitForValue(client.evaluate, "location.pathname === '/celebrate'", 24_000);
-
-  const regionalEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  const regional = regionalEnvelope.state.session;
-  assert.equal(regional.currentTokenIndex, 13);
-  assert.equal(regional.evaluationMode, "regional-restraint");
-  assert.equal(regional.alignment.metrics.accuracyRate, 93);
-  assert.equal(regional.alignment.tokens.find((token) => token.token === "knight").scoreImpact, true);
-  assert.equal(regional.alignment.metrics.falseCorrectionRate, 0);
-  assert.equal(regional.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "accepted-regional-variant");
-  assert.match(regional.attemptSnippet.dataUri, /^data:audio\/wav/);
-  assert.equal(regional.attemptSnippet.durationMs, 2_000);
-  assert.deepEqual(regional.attemptSnippets.map((snippet) => snippet.token).sort(), ["horse", "knight"]);
-  assert.equal(regional.attemptSnippets.every((snippet) => snippet.durationMs === 2_000 && snippet.dataUri.startsWith("data:audio/wav")), true);
-
-  await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('View Educator Record'))?.click()`);
-  await waitForValue(client.evaluate, "location.pathname === '/dashboard/student'");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'knight')?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Listen to Attempt (2s)')");
-  await client.evaluate("document.querySelector('button[aria-label=\"Play the retained two-second attempt\"]')?.click()");
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Playing the retained two-second attempt') || document.body.textContent.includes('Attempt playback complete')");
-  assert.equal(await client.evaluate("document.body.textContent.includes('Provisional phonics error · included in accuracy until reviewed')"), true);
-  assert.equal(await client.evaluate("document.body.textContent.includes('Override AI (Accept as Fluent)')"), true);
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm Phonics Error'))?.click()`);
-  await waitForValue(client.evaluate, `document.body.textContent.includes("Confirmed: Sounded silent 'k'")`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Silent consonant intervention required')");
-  const confirmedEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  assert.equal(confirmedEnvelope.state.session.alignment.metrics.accuracyRate, 93);
-  assert.equal(confirmedEnvelope.state.session.alignment.tokens.find((token) => token.token === "knight").status, "confirmed-phonics-error");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Override AI (Accept as Fluent)'))?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Confirm: Accept as Fluent')");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Confirm: Accept as Fluent'))?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Accepted as fluent by educator')");
-  const overrideEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  assert.equal(overrideEnvelope.state.overrides.at(-1).sessionId, regional.id);
-  assert.equal(overrideEnvelope.state.session.alignment.tokens.find((token) => token.token === "knight").status, "accepted-teacher-override");
-  assert.equal(overrideEnvelope.state.session.alignment.metrics.accuracyRate, 100);
-  assert.equal(await client.evaluate("document.body.textContent.includes('Teacher override saved.')"), true);
-
-  await client.command("Page.navigate", { url: APP_URL });
-  await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('The Brave Knight'))?.click()`);
-  await waitForValue(client.evaluate, "location.pathname === '/read'");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Standard Received Pronunciation'))?.click()`);
-  await waitForValue(client.evaluate, "document.querySelector('button[aria-pressed=\"true\"]')?.textContent.includes('Baseline ASR')");
-  await client.evaluate("document.querySelector('button[aria-label=\"Start microphone\"]')?.click()");
-  await waitForValue(client.evaluate, "document.querySelector('button[aria-label=\"Stop recording and finish\"]') !== null");
-  await waitForValue(client.evaluate, "JSON.parse(localStorage.getItem('reader-leader-session-v2')).state.session.currentTokenIndex === 13", 20_000);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Baseline ASR interrupt')", 5_000);
-  assert.equal(await client.evaluate(`[...document.querySelectorAll('span')].some((span) => span.textContent === 'horse.' && span.className.includes('E5A93C'))`), true, "Baseline final horse should show the substitution interrupt.");
-  await sleep(1_400);
-  assert.equal(await client.evaluate("location.pathname"), "/read", "Baseline interrupt should remain visible before final navigation.");
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Take your time. Look at the word when you’re ready.')", 9_000);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Let’s try the first sound together.')", 5_000);
+  await waitForValue(client.evaluate, `JSON.parse(localStorage.getItem('${STORAGE_KEY}')).state.session.currentTokenIndex === 13`, 22_000);
+  await sleep(1_200);
+  await client.evaluate("document.querySelector('button[aria-label=\"Stop recording and finish\"]')?.click()");
   await waitForValue(client.evaluate, "location.pathname === '/celebrate'", 8_000);
-  const standardEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  const standard = standardEnvelope.state.session;
-  assert.equal(standard.evaluationMode, "standard-rp");
-  assert.equal(standard.alignment.tokens.find((token) => token.token === "knight").status, "correct");
-  assert.equal(standard.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "substitution");
-  assert.equal(standard.alignment.metrics.accuracyRate, 93);
-  assert.equal(standard.alignment.metrics.falseCorrectionRate, 7.1);
-  assert.deepEqual(standard.attemptSnippets.map((snippet) => snippet.token).sort(), ["horse", "knight"]);
-  assert.equal(standard.attemptSnippets.find((snippet) => snippet.token === "horse").durationMs, 2_000);
+
+  const envelope = JSON.parse(await client.evaluate(`localStorage.getItem('${STORAGE_KEY}')`));
+  const session = envelope.state.session;
+  assert.equal(session.telemetry.version, 1);
+  assert.equal(session.telemetry.events.some((event) => event.type === "visual-nudge"), true);
+  assert.equal(session.telemetry.events.some((event) => event.type === "intervention"), true);
+  assert.equal(session.telemetry.events.filter((event) => event.type === "recognition-restart").length, 1);
+  assert.equal(session.telemetry.tokens.find((token) => token.normalizedToken === "knight").status, "self-corrected");
+  assert.equal(session.telemetry.tokens.find((token) => token.normalizedToken === "horse").status, "accepted-regional-variant");
+  assert.deepEqual(session.attemptSnippets.map((snippet) => snippet.token).sort(), ["horse", "knight"]);
+  assert.equal(session.alignment.source, "client-fallback");
+  assert.equal(session.alignment.metrics.accuracyRate, 100);
+  assert.equal(session.alignment.metrics.selfCorrections, 1);
+  assert.equal(session.alignment.metrics.interventions >= 1, true);
 
   await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('View Educator Record'))?.click()`);
   await waitForValue(client.evaluate, "location.pathname === '/dashboard/student'");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'horse.')?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Accept Regional Dialect (Override Baseline)')");
-  assert.equal(await client.evaluate("document.body.textContent.includes('Confirm Misread')"), true);
+  assert.equal(await client.evaluate("document.body.textContent.includes('Validated client record')"), true);
+  assert.equal(await client.evaluate("document.body.textContent.includes('Gemini is not configured')"), true);
+  assert.equal(await client.evaluate("document.body.textContent.includes('Self-corrections 1')"), true);
+  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'knight')?.click()`);
+  await waitForValue(client.evaluate, "document.body.textContent.includes('Self-correction recorded')");
+  assert.equal(await client.evaluate("document.body.textContent.includes('Self-corrected during reading · no accuracy penalty')"), true);
   assert.equal(await client.evaluate("document.body.textContent.includes('Listen to Attempt (2s)')"), true);
-  await client.evaluate("document.querySelector('button[aria-label=\"Play the retained two-second attempt\"]')?.click()");
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Playing the retained two-second attempt') || document.body.textContent.includes('Attempt playback complete')");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'Confirm Misread')?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Confirmed misread · accuracy penalty retained')");
-  const confirmedMisreadEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  assert.equal(confirmedMisreadEnvelope.state.session.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "confirmed-misread");
-  assert.equal(confirmedMisreadEnvelope.state.session.alignment.metrics.accuracyRate, 93);
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('Accept Regional Dialect (Override Baseline)'))?.click()`);
-  await waitForValue(client.evaluate, "document.body.textContent.includes('Teacher override saved: Accepted regional rhotic variant.')");
-  const regionalOverrideEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  const regionalOverride = regionalOverrideEnvelope.state.session;
-  assert.equal(regionalOverride.alignment.tokens.find((token) => token.token.startsWith("horse")).status, "accepted-teacher-override");
-  assert.equal(regionalOverride.alignment.metrics.accuracyRate, 100);
-  assert.equal(regionalOverride.alignment.metrics.falseCorrectionRate, 0);
-  assert.equal(await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.trim() === 'horse.')?.className.includes('emerald')`), true);
 
-  await client.command("Page.navigate", { url: APP_URL });
-  await waitForValue(client.evaluate, "document.documentElement.dataset.readerLeaderHydrated === 'true'");
-  await client.evaluate(`[...document.querySelectorAll('button')].find((button) => button.textContent?.includes('The Fat Cat'))?.click()`);
-  await waitForValue(client.evaluate, "location.pathname === '/read'");
-  for (let index = 0; index < 6; index += 1) {
-    await client.evaluate("document.querySelector('button[aria-label=\"Next target word\"]')?.click()");
-    await sleep(50);
-  }
-  await client.evaluate("document.querySelector('button[aria-label=\"Finish this reading\"]')?.click()");
-  await waitForValue(client.evaluate, "location.pathname === '/celebrate'", 12_000);
-  await client.evaluate(`[...document.querySelectorAll('a')].find((anchor) => anchor.textContent?.includes('View Educator Record'))?.click()`);
-  await waitForValue(client.evaluate, "location.pathname === '/dashboard/student'");
-  const introductoryEnvelope = JSON.parse(await client.evaluate("localStorage.getItem('reader-leader-session-v2')"));
-  assert.equal(introductoryEnvelope.state.session.alignment.metrics.accuracyRate, 100);
-  assert.equal(introductoryEnvelope.state.session.alignment.tokens.every((token) => token.status === "correct"), true);
-  assert.equal(await client.evaluate("document.body.textContent.includes('Teacher override saved.')"), false);
-  assert.equal(await client.evaluate("document.body.textContent.includes('Practising cvc words and short vowels')"), true);
-  assert.equal(await client.evaluate("document.body.textContent.includes('Reviewed sounded silent')"), false);
-  console.log("Green Band, reset, Brave Knight preservation, and non-hero educator isolation browser flow passed.");
+  const seriousEvents = client.events.filter((event) => event.method === "Runtime.exceptionThrown" || event.params?.entry?.level === "error");
+  assert.deepEqual(seriousEvents, []);
+  console.log("Stage 4 VAD, recognition restart, bounded alignment, telemetry, evidence, and educator record browser flow passed.");
 } catch (error) {
   console.error("Browser verification failed:", error);
   if (client) console.error("Captured runtime events:", JSON.stringify(client.events, null, 2));

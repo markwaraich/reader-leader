@@ -5,7 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { DEFAULT_STATE, SEEDED_RUNNING_RECORD, getStory, getStorySnapshot } from "@/lib/seed";
 import { loadReaderLeaderState, saveReaderLeaderState } from "@/lib/session-storage";
 import { recalculateAlignmentMetrics } from "@/lib/reading-metrics";
-import type { AlignmentResponse, AttemptAudioSnippet, EvaluationMode, ReaderLeaderState, Story } from "@/lib/domain";
+import type { AlignmentResponse, AttemptAudioSnippet, EvaluationMode, ReadAloudTelemetry, ReaderLeaderState, Story } from "@/lib/domain";
 
 interface SessionContextValue {
   state: ReaderLeaderState;
@@ -16,7 +16,7 @@ interface SessionContextValue {
   setCurrentToken: (tokenIndex: number) => void;
   setEvaluationMode: (mode: EvaluationMode) => void;
   beginAlignment: (elapsedMs: number) => void;
-  completeReading: (alignment: AlignmentResponse, elapsedMs: number, attemptSnippets?: AttemptAudioSnippet[]) => void;
+  completeReading: (alignment: AlignmentResponse, elapsedMs: number, attemptSnippets?: AttemptAudioSnippet[], telemetry?: ReadAloudTelemetry) => void;
   confirmPhonicsError: (tokenId: string, reason: string) => void;
   confirmMisread: (tokenId: string, reason: string) => void;
   confirmOverride: (tokenId: string, reason: string) => void;
@@ -60,6 +60,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         currentTokenIndex: 0,
         elapsedMs: 0,
         alignment: undefined,
+        telemetry: undefined,
         attemptSnippets: undefined,
         attemptSnippet: undefined,
         earnedBadges: [],
@@ -77,6 +78,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         currentTokenIndex: 0,
         elapsedMs: 0,
         alignment: undefined,
+        telemetry: undefined,
         attemptSnippets: undefined,
         attemptSnippet: undefined,
         earnedBadges: [],
@@ -89,7 +91,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const startReading = useCallback(() => {
     setState((current) => ({
       ...current,
-      session: { ...current.session, status: "reading", currentTokenIndex: 0, startedAt: new Date().toISOString(), completedAt: undefined, elapsedMs: 0, alignment: undefined, attemptSnippets: undefined, attemptSnippet: undefined },
+      session: { ...current.session, status: "reading", currentTokenIndex: 0, startedAt: new Date().toISOString(), completedAt: undefined, elapsedMs: 0, alignment: undefined, telemetry: undefined, attemptSnippets: undefined, attemptSnippet: undefined },
     }));
   }, []);
 
@@ -112,13 +114,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState((current) => ({ ...current, session: { ...current.session, status: "aligning", elapsedMs } }));
   }, []);
 
-  const completeReading = useCallback((alignment: AlignmentResponse, elapsedMs: number, attemptSnippets?: AttemptAudioSnippet[]) => {
+  const completeReading = useCallback((alignment: AlignmentResponse, elapsedMs: number, attemptSnippets?: AttemptAudioSnippet[], telemetry?: ReadAloudTelemetry) => {
     setState((current) => ({
       ...current,
       session: {
         ...current.session,
         status: "complete",
         alignment,
+        telemetry,
         attemptSnippets,
         attemptSnippet: attemptSnippets?.find((snippet) => snippet.token === "knight"),
         elapsedMs,

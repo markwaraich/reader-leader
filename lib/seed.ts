@@ -53,7 +53,7 @@ runningRecordTokens[13] = {
 
 export const SEEDED_RUNNING_RECORD: AlignmentResponse = {
   sessionId: "session-jack-001", localeProfile: "en-IE", evaluationMode: "regional-restraint", restraintApplied: true, lastConfirmedTokenIndex: 13,
-  tokens: runningRecordTokens, metrics: { accuracyRate: 93, wcpm: 62, elapsedSeconds: 21, falseCorrectionRate: 0 },
+  tokens: runningRecordTokens, metrics: { accuracyRate: 93, wcpm: 62, elapsedSeconds: 21, falseCorrectionRate: 0, totalWords: 14, correctWords: 13, substitutions: 0, omissions: 0, selfCorrections: 0, interventions: 1 },
 };
 
 export const CLASS_STUDENTS: StudentMetric[] = [

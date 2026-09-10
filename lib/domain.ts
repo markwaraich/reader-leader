@@ -18,7 +18,7 @@ export interface Story {
 
 export type StorySnapshot = Pick<Story, "id" | "title" | "level" | "band" | "bandLabel" | "focus" | "targetText">;
 
-export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "confirmed-phonics-error" | "confirmed-misread" | "review" | "substitution" | "omission" | "hesitation";
+export type AlignmentStatus = "correct" | "accepted-regional-variant" | "accepted-teacher-override" | "confirmed-phonics-error" | "confirmed-misread" | "self-corrected" | "review" | "substitution" | "omission" | "hesitation";
 
 export interface TokenAlignment {
   id: string;
@@ -41,7 +41,95 @@ export interface ReadingMetrics {
   wcpm: number;
   elapsedSeconds: number;
   falseCorrectionRate: number;
+  totalWords: number;
+  correctWords: number;
+  substitutions: number;
+  omissions: number;
+  selfCorrections: number;
+  interventions: number;
 }
+
+export type RecognitionSupport = "available" | "unavailable" | "failed";
+export type LiveTokenStatus = "pending" | "correct" | "accepted-regional-variant" | "substitution" | "omission" | "self-corrected";
+
+export interface RecognitionAlternative {
+  transcript: string;
+  confidence: number;
+}
+
+export interface RecognitionObservation {
+  id: string;
+  resultIndex: number;
+  transcript: string;
+  alternatives: RecognitionAlternative[];
+  confidence: number;
+  isFinal: boolean;
+  atMs: number;
+}
+
+export interface LiveTokenState {
+  id: string;
+  token: string;
+  normalizedToken: string;
+  index: number;
+  status: LiveTokenStatus;
+  heardAs?: string;
+  firstAttempt?: string;
+  confidence?: number;
+  explanation?: string;
+  scoreImpact: boolean;
+  falseCorrection?: boolean;
+}
+
+export type TelemetryEventType = "speech-start" | "speech-end" | "visual-nudge" | "intervention" | "recognition-restart" | "recognition-error";
+
+export interface TelemetryEvent {
+  id: string;
+  type: TelemetryEventType;
+  atMs: number;
+  tokenIndex: number;
+  detail?: string;
+}
+
+export interface ReadAloudTelemetry {
+  version: 1;
+  sessionId: string;
+  storyId: StoryId;
+  targetText: string;
+  localeProfile: AccentProfile;
+  evaluationMode: EvaluationMode;
+  status: "idle" | "reading" | "complete";
+  startedAtIso?: string;
+  elapsedMs: number;
+  currentTokenIndex: number;
+  recognitionSupport: RecognitionSupport;
+  interimTranscript: string;
+  finalTranscript: string;
+  observations: RecognitionObservation[];
+  events: TelemetryEvent[];
+  tokens: LiveTokenState[];
+  metrics: ReadingMetrics;
+}
+
+export interface AudioEvidencePayload {
+  targetToken: string;
+  audioBase64: string;
+  audioMimeType: "audio/wav";
+  audioBytes: number;
+}
+
+export interface FinalizeRunningRecordRequest {
+  version: 1;
+  sessionId: string;
+  storyId: StoryId;
+  localeProfile: AccentProfile;
+  evaluationMode: EvaluationMode;
+  elapsedMs: number;
+  telemetry: ReadAloudTelemetry;
+  audioEvidence?: AudioEvidencePayload[];
+}
+
+export type AlignmentSource = "gemini" | "client-fallback" | "deterministic";
 
 export interface AttemptAudioSnippet {
   token: string;
@@ -75,6 +163,8 @@ export interface AlignmentResponse {
   lastConfirmedTokenIndex: number;
   tokens: TokenAlignment[];
   metrics: ReadingMetrics;
+  source?: AlignmentSource;
+  warning?: string;
 }
 
 export type HesitationState = "idle" | "requesting-permission" | "listening" | "speaking" | "hesitating" | "prompting" | "finishing" | "complete" | "permission-denied" | "unsupported" | "error";
@@ -110,6 +200,7 @@ export interface ReadingSession {
   currentTokenIndex: number;
   elapsedMs: number;
   alignment?: AlignmentResponse;
+  telemetry?: ReadAloudTelemetry;
   attemptSnippets?: AttemptAudioSnippet[];
   /** Legacy single-snippet field retained for persisted-session migration. */
   attemptSnippet?: AttemptAudioSnippet;

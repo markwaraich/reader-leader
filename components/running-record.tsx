@@ -8,10 +8,11 @@ import { TwoStepOverride } from "@/components/two-step-override";
 import { audioDataUriToBlob } from "@/lib/audio-data";
 import type { AlignmentResponse, TokenAlignment } from "@/lib/domain";
 
-const interactiveStatuses = new Set(["review", "substitution", "omission", "confirmed-phonics-error", "confirmed-misread", "accepted-teacher-override"]);
+const interactiveStatuses = new Set(["review", "substitution", "omission", "self-corrected", "confirmed-phonics-error", "confirmed-misread", "accepted-teacher-override"]);
 
 function tokenClass(token: TokenAlignment): string {
   if (token.status === "accepted-teacher-override") return "rounded-lg bg-emerald-100 px-1 text-emerald-800";
+  if (token.status === "self-corrected") return "rounded-lg bg-sky-100 px-1 text-sky-800 underline decoration-double underline-offset-[8px]";
   if (["review", "substitution", "omission", "confirmed-phonics-error", "confirmed-misread"].includes(token.status)) return "text-[var(--reader-red)] underline decoration-dotted decoration-[3px] underline-offset-[10px]";
   if (token.status === "hesitation") return "rounded-lg bg-[var(--reader-amber)] px-1";
   return "";
@@ -28,7 +29,9 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
   const accepted = openToken?.status === "accepted-teacher-override";
   const confirmed = openToken?.status === "confirmed-phonics-error";
   const confirmedMisread = openToken?.status === "confirmed-misread";
+  const selfCorrected = openToken?.status === "self-corrected";
   const dialectReview = openWord === "horse";
+  const phonicsReview = openWord === "knight";
   const attemptSnippets = state.session.attemptSnippets ?? (state.session.attemptSnippet ? [state.session.attemptSnippet] : []);
   const activeSnippet = attemptSnippets.find((snippet) => snippet.token === openWord);
   const snippetDataUri = activeSnippet?.dataUri;
@@ -84,7 +87,7 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
 
   function overrideAsFluent() {
     if (!openToken) return;
-    confirmOverride(openToken.id, "Educator determined the child read ‘knight’ fluently and the AI misheard the attempt.");
+    confirmOverride(openToken.id, `Educator determined the child read “${openWord}” fluently and the AI misheard the attempt.`);
   }
 
   function acceptRegionalDialect() {
@@ -100,13 +103,15 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
   return (
     <section className="educator-card min-h-[430px] p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-2xl font-black">Running Record</h2>
-        <div className="flex gap-3 text-sm font-black">
+        <div><h2 className="text-2xl font-black">Running Record</h2><p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-500">{alignment.source === "gemini" ? "Gemini-reviewed record" : alignment.source === "client-fallback" ? "Validated client record" : "Demonstration record"}</p></div>
+        <div className="flex flex-wrap gap-3 text-sm font-black">
           <span className="rounded-full bg-[var(--reader-aqua)] px-3 py-1.5">Accuracy {alignment.metrics.accuracyRate}%</span>
           <span className="rounded-full bg-[var(--reader-mint)] px-3 py-1.5">{alignment.metrics.wcpm} WCPM</span>
-          <span className="rounded-full bg-[#fff0c8] px-3 py-1.5">False corrections {alignment.metrics.falseCorrectionRate.toFixed(1)}%</span>
+          <span className="rounded-full bg-[#fff0c8] px-3 py-1.5">Subs {alignment.metrics.substitutions ?? 0} · Omissions {alignment.metrics.omissions ?? 0} · Self-corrections {alignment.metrics.selfCorrections ?? 0}</span>
         </div>
       </div>
+
+      {alignment.warning && <p className="mt-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900" role="status">{alignment.warning}</p>}
 
       <div className="mt-20 text-[2.4rem] leading-[1.9] tracking-[-0.03em] sm:text-[3.25rem]">
         {alignment.tokens.map((token, index) => {
@@ -137,10 +142,12 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
         <div aria-label={`Review ${openToken.token}`} className="mt-8 max-w-xl rounded-2xl border border-slate-300 bg-white p-5 text-base text-black shadow-lg" role="dialog">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-lg font-black">{accepted || confirmed || confirmedMisread ? "Educator decision recorded" : `Review “${openToken.token.replace(/[.,!?]/g, "")}”`}</p>
+              <p className="text-lg font-black">{accepted || confirmed || confirmedMisread ? "Educator decision recorded" : selfCorrected ? "Self-correction recorded" : `Review “${openToken.token.replace(/[.,!?]/g, "")}”`}</p>
               <p className="mt-2">Spoken as: <strong>{openToken.phoneticDisplay ?? openToken.heardAs ?? "Not available"}</strong> ({openToken.explanation ?? "Pronunciation evidence available for review."})</p>
               <p className={`mt-2 text-sm font-black ${accepted ? "text-emerald-700" : confirmed || confirmedMisread ? "text-[var(--reader-red)]" : "text-[var(--reader-teal-deep)]"}`}>
-                {dialectReview
+                {selfCorrected
+                  ? "Self-corrected during reading · no accuracy penalty"
+                  : dialectReview
                   ? accepted
                     ? "Accepted regional rhotic variant · false correction removed"
                     : confirmedMisread
@@ -150,7 +157,9 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
                     ? "Accepted as fluent by teacher override · no score penalty"
                     : confirmed
                       ? "Confirmed: Sounded silent 'k'"
-                      : "Provisional phonics error · included in accuracy until reviewed"}
+                      : phonicsReview
+                        ? "Provisional phonics error · included in accuracy until reviewed"
+                        : "Provisional word-level error · included in accuracy until reviewed"}
               </p>
             </div>
             <button aria-label="Close pronunciation review" className="pressable rounded-lg p-1 text-slate-500" onClick={() => setOpenTokenId(null)} type="button"><X className="size-5" /></button>
@@ -162,7 +171,7 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
             </button>
             {playbackMessage && <p aria-live="polite" className="mt-2 text-sm text-slate-600">{playbackMessage}</p>}
           </>}
-          {dialectReview ? (
+          {!selfCorrected && (dialectReview ? (
             <TwoStepOverride
               accepted={accepted}
               acceptedLabel="Accepted regional rhotic variant"
@@ -177,7 +186,7 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
               secondaryLabel="Confirm Misread"
               secondaryRequiresConfirmation={false}
             />
-          ) : (
+          ) : phonicsReview ? (
             <TwoStepOverride
               accepted={accepted}
               acceptedLabel="Accepted as fluent by educator"
@@ -189,7 +198,19 @@ export function RunningRecord({ alignment }: { alignment: AlignmentResponse }) {
               secondaryConfirmLabel="Confirm: Accept as Fluent"
               secondaryLabel="Override AI (Accept as Fluent)"
             />
-          )}
+          ) : (
+            <TwoStepOverride
+              accepted={accepted}
+              acceptedLabel="Accepted as fluent by educator"
+              onPrimary={confirmAuthenticMisread}
+              primaryConfirmed={confirmedMisread}
+              primaryConfirmedLabel="Misread Confirmed"
+              primaryLabel="Confirm Misread"
+              onSecondary={overrideAsFluent}
+              secondaryConfirmLabel="Confirm: Accept as Fluent"
+              secondaryLabel="Override AI (Accept as Fluent)"
+            />
+          ))}
         </div>
       )}
 

@@ -1,9 +1,9 @@
 /** Student restraint rule: silence offers support at 3s and 5s without creating a pronunciation penalty. */
 import type { EvaluationMode, HesitationEvent, HesitationMachine } from "@/lib/domain";
 
-// Fast-paced demo thresholds for stage presentation
-export const HESITATION_THRESHOLD_MS = 2_000;          // Turns amber at 2.0s of silence (down from 3.0s)
-export const PROMPT_THRESHOLD_MS = 3_800;              // Reveals phonetic cue at 3.8s total (down from 5.0s)
+// Stage 4 literacy-support thresholds: a pause is telemetry, never an automatic reading error.
+export const HESITATION_THRESHOLD_MS = 3_000;
+export const PROMPT_THRESHOLD_MS = 5_000;
 
 // Baseline ASR vs Final Navigation Sequencing
 export const BASELINE_ASR_PATIENCE_MS = 800;           // Shows baseline error after 800ms on "horse"

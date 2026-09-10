@@ -17,6 +17,13 @@ export default defineConfig({
     include: [
       "server/gemini*.test.ts",
       "server/speech-align-route.test.ts",
+      "server/read-aloud-vad.test.ts",
+      "server/alignment-engine.test.ts",
+      "server/accent-invariance.test.ts",
+      "server/telemetry-store.test.ts",
+      "server/reading-scoring.test.ts",
+      "server/session-storage.test.ts",
+      "server/use-speech-recognition.test.tsx",
     ],
   },
 });

@@ -2,11 +2,10 @@
 
 /** Student restraint rule: own every Web Audio resource in one hook and tear it down idempotently on stop, failure, and unmount. */
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import { hesitationReducer, INITIAL_HESITATION_MACHINE } from "@/lib/hesitation-fsm";
+import { HESITATION_THRESHOLD_MS, hesitationReducer, INITIAL_HESITATION_MACHINE, PROMPT_THRESHOLD_MS } from "@/lib/hesitation-fsm";
 import { ATTEMPT_SNIPPET_DURATION_MS, ATTEMPT_SNIPPET_PRE_ROLL_MS, createAttemptSnippetWindow, sliceAudioBlobToWav } from "@/lib/audio-data";
+import { calculateRms, deriveVadThreshold, isVoiceActive, VAD_CALIBRATION_MS } from "@/lib/read-aloud/vad";
 
-const VOICE_RMS_THRESHOLD = 0.028;
-const VAD_WARMUP_MS = 300;
 const SUSTAINED_SPEECH_MS = 90;
 const SPEECH_RELEASE_MS = 180;
 const UI_SAMPLE_INTERVAL_MS = 100;
@@ -29,6 +28,9 @@ export function useHesitationFSM() {
   const [speechStartedEpoch, setSpeechStartedEpoch] = useState(0);
   const [speechEndedEpoch, setSpeechEndedEpoch] = useState(0);
   const [speechStartedAtMs, setSpeechStartedAtMs] = useState(0);
+  const [nudgeEpoch, setNudgeEpoch] = useState(0);
+  const [interventionEpoch, setInterventionEpoch] = useState(0);
+  const [audioLevel, setAudioLevel] = useState(0);
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -42,6 +44,11 @@ export function useHesitationFSM() {
   const voiceCandidateStartedAtRef = useRef<number | null>(null);
   const lastUiDispatchAtRef = useRef(0);
   const speakingRef = useRef(false);
+  const noiseSamplesRef = useRef<number[]>([]);
+  const thresholdRef = useRef<number | null>(null);
+  const silenceEpisodeStartedAtRef = useRef<number | null>(null);
+  const nudgeEmittedRef = useRef(false);
+  const interventionEmittedRef = useRef(false);
 
   const disconnectAudioGraph = useCallback(() => {
     if (frameRef.current !== null) {
@@ -73,6 +80,11 @@ export function useHesitationFSM() {
     voiceCandidateStartedAtRef.current = null;
     lastUiDispatchAtRef.current = 0;
     speakingRef.current = false;
+    noiseSamplesRef.current = [];
+    thresholdRef.current = null;
+    silenceEpisodeStartedAtRef.current = null;
+    nudgeEmittedRef.current = false;
+    interventionEmittedRef.current = false;
   }, []);
 
   const captureSnippet = useCallback((token: string, tokenStartMs: number, durationMs = ATTEMPT_SNIPPET_DURATION_MS, preRollMs = ATTEMPT_SNIPPET_PRE_ROLL_MS): void => {
@@ -90,6 +102,9 @@ export function useHesitationFSM() {
     setSpeechStartedEpoch(0);
     setSpeechEndedEpoch(0);
     setSpeechStartedAtMs(0);
+    setNudgeEpoch(0);
+    setInterventionEpoch(0);
+    setAudioLevel(0);
     setErrorMessage(null);
 
     if (!navigator.mediaDevices?.getUserMedia || !window.AudioContext) {
@@ -118,6 +133,7 @@ export function useHesitationFSM() {
       startedAtRef.current = performance.now();
       lastVoiceAtRef.current = null;
       voiceCandidateStartedAtRef.current = null;
+      silenceEpisodeStartedAtRef.current = startedAtRef.current;
 
       if (typeof MediaRecorder !== "undefined") {
         const preferredType = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"]
@@ -138,22 +154,20 @@ export function useHesitationFSM() {
         const activeAnalyser = analyserRef.current;
         if (!activeAnalyser) return;
         activeAnalyser.getByteTimeDomainData(samples);
-        let energy = 0;
-        for (const value of samples) {
-          const normalised = (value - 128) / 128;
-          energy += normalised * normalised;
-        }
-        const rms = Math.sqrt(energy / samples.length);
+        const rms = calculateRms(samples);
         const startedAt = startedAtRef.current;
-        if (startedAt !== null && now - startedAt < VAD_WARMUP_MS) {
+        if (startedAt !== null && now - startedAt < VAD_CALIBRATION_MS) {
+          noiseSamplesRef.current.push(rms);
           lastVoiceAtRef.current = null;
           voiceCandidateStartedAtRef.current = null;
           speakingRef.current = false;
           frameRef.current = requestAnimationFrame(sample);
           return;
         }
+        thresholdRef.current ??= deriveVadThreshold(noiseSamplesRef.current);
+        const voiceActive = isVoiceActive(rms, thresholdRef.current, speakingRef.current);
 
-        if (rms >= VOICE_RMS_THRESHOLD) {
+        if (voiceActive) {
           if (speakingRef.current) {
             lastVoiceAtRef.current = now;
           } else {
@@ -172,9 +186,28 @@ export function useHesitationFSM() {
             const detectedStart = voiceCandidateStartedAtRef.current ?? now;
             setSpeechStartedAtMs(Math.max(0, detectedStart - sessionStartedAt));
             setSpeechStartedEpoch((current) => current + 1);
+            silenceEpisodeStartedAtRef.current = null;
+            nudgeEmittedRef.current = false;
+            interventionEmittedRef.current = false;
           }
-          if (!recentlySpeaking && speakingRef.current) setSpeechEndedEpoch((current) => current + 1);
+          if (!recentlySpeaking && speakingRef.current) {
+            setSpeechEndedEpoch((current) => current + 1);
+            silenceEpisodeStartedAtRef.current = now;
+          }
+          if (!recentlySpeaking) {
+            silenceEpisodeStartedAtRef.current ??= now;
+            const episodeSilenceMs = now - silenceEpisodeStartedAtRef.current;
+            if (episodeSilenceMs >= HESITATION_THRESHOLD_MS && !nudgeEmittedRef.current) {
+              nudgeEmittedRef.current = true;
+              setNudgeEpoch((current) => current + 1);
+            }
+            if (episodeSilenceMs >= PROMPT_THRESHOLD_MS && !interventionEmittedRef.current) {
+              interventionEmittedRef.current = true;
+              setInterventionEpoch((current) => current + 1);
+            }
+          }
           speakingRef.current = recentlySpeaking;
+          setAudioLevel(rms);
           dispatch({ type: recentlySpeaking ? "SPEECH" : "SILENCE", atMs: now });
         }
         frameRef.current = requestAnimationFrame(sample);
@@ -242,6 +275,9 @@ export function useHesitationFSM() {
     chunksRef.current = [];
     snippetWindowsRef.current.clear();
     setSpeechStartedAtMs(0);
+    setNudgeEpoch(0);
+    setInterventionEpoch(0);
+    setAudioLevel(0);
     setErrorMessage(null);
     dispatch({ type: "RESET" });
   }, [disconnectAudioGraph]);
@@ -258,6 +294,9 @@ export function useHesitationFSM() {
     speechStartedEpoch,
     speechStartedAtMs,
     speechEndedEpoch,
+    nudgeEpoch,
+    interventionEpoch,
+    audioLevel,
     isActive: ["listening", "speaking", "hesitating", "prompting"].includes(machine.phase),
     start,
     captureSnippet,

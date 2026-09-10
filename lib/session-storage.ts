@@ -3,8 +3,8 @@ import { z } from "zod";
 import type { ReaderLeaderState, StoryId } from "@/lib/domain";
 import { DEFAULT_STATE, STORIES, getStory, getStorySnapshot } from "@/lib/seed";
 
-export const READER_SESSION_STORAGE_KEY = "reader-leader-session-v2";
-const STORAGE_VERSION = 2 as const;
+export const READER_SESSION_STORAGE_KEY = "reader-leader-session-v3";
+const STORAGE_VERSION = 3 as const;
 
 const persistedSchema = z.object({
   version: z.literal(STORAGE_VERSION),
@@ -44,6 +44,14 @@ function normaliseState(value: unknown): ReaderLeaderState {
     : attemptSnippet
       ? [attemptSnippet]
       : undefined;
+  const telemetry = rawSession.telemetry
+    && rawSession.telemetry.version === 1
+    && rawSession.telemetry.sessionId === rawSession.id
+    && Array.isArray(rawSession.telemetry.tokens)
+    && Array.isArray(rawSession.telemetry.events)
+    && Array.isArray(rawSession.telemetry.observations)
+    ? rawSession.telemetry
+    : undefined;
 
   return {
     ...DEFAULT_STATE,
@@ -58,6 +66,7 @@ function normaliseState(value: unknown): ReaderLeaderState {
       localeProfile: evaluationMode === "regional-restraint" ? "en-IE" : "en-GB",
       elapsedMs: rawSession.elapsedMs ?? 0,
       alignment: isObsoletePhaseOneRecord ? undefined : rawSession.alignment,
+      telemetry,
       attemptSnippets,
       attemptSnippet,
     },
@@ -73,8 +82,14 @@ export function loadReaderLeaderState(storage: Storage): ReaderLeaderState {
       if (parsed.success) return normaliseState(parsed.data.state);
     }
 
-    const legacy = storage.getItem("reader-leader-session-v1");
-    return legacy ? normaliseState(JSON.parse(legacy)) : DEFAULT_STATE;
+    const versionTwo = storage.getItem("reader-leader-session-v2");
+    if (versionTwo) {
+      const parsed = JSON.parse(versionTwo) as { state?: unknown };
+      return normaliseState(parsed.state ?? parsed);
+    }
+
+    const versionOne = storage.getItem("reader-leader-session-v1");
+    return versionOne ? normaliseState(JSON.parse(versionOne)) : DEFAULT_STATE;
   } catch {
     storage.removeItem(READER_SESSION_STORAGE_KEY);
     return DEFAULT_STATE;
